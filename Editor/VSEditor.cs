@@ -358,7 +358,6 @@ namespace VisualStudioEditor
 
         public void Initialize(string editorInstallationPath)
         {
-            CreateIfDoesntExist();
             m_Initiliazer.Initialize(editorInstallationPath, InstalledVisualStudios);
         }
 
