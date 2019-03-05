@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Microsoft.Win32;
 using UnityEditor;
 using UnityEngine;
 using Debug = System.Diagnostics.Debug;
 using Unity.CodeEditor;
+using System.Runtime.InteropServices;
+
 
 namespace VisualStudioEditor
 {
@@ -32,42 +35,11 @@ namespace VisualStudioEditor
             "\n(This does work with Visual Studio Pro)"
         );
 
-        static IEnumerable<string> FindVisualStudioDevEnvPaths()
-        {
-            string asset = AssetDatabase.FindAssets("VSWhere a:packages").Select(AssetDatabase.GUIDToAssetPath).FirstOrDefault(assetPath => assetPath.Contains("vswhere.exe"));
-            if (string.IsNullOrWhiteSpace(asset)) // This may be called too early where the asset database has not replicated this information yet.
-            {
-                yield break;
-            }
-            UnityEditor.PackageManager.PackageInfo packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(asset);
-            var progpath = packageInfo.resolvedPath + asset.Substring("Packages/com.unity.ide.visualstudio".Length);
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = progpath,
-                    Arguments = "-prerelease -property productPath",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                }
-            };
-
-            process.Start();
-            process.WaitForExit();
-
-            while (!process.StandardOutput.EndOfStream)
-            {
-                yield return process.StandardOutput.ReadLine();
-            }
-        }
-
         static VSEditor()
         {
             try
             {
-                InstalledVisualStudios = GetInstalledVisualStudios();
+                InstalledVisualStudios = Discovery.GetInstalledVisualStudios();
             }
             catch (Exception ex)
             {
@@ -79,16 +51,19 @@ namespace VisualStudioEditor
             var current = CodeEditor.CurrentEditorInstallation;
             if (editor.TryGetInstallationForPath(current, out var installation))
             {
-                editor.Initialize(current);
+                if (installation.Name != "MonoDevelop")
+                {
+                    editor.Initialize(current);
+                }
                 return;
             }
         }
 
+        const string unity_generate_all = "unity_generate_all_csproj";
         IDiscovery m_Discoverability;
         IGenerator m_Generation;
         CodeEditor.Installation m_Installation;
-        VSInitializer m_Initiliazer = new VSInitializer();
-        bool m_ExternalEditorSupportsUnityProj;
+        VSInitializer m_Initializer = new VSInitializer();
 
         public VSEditor(IDiscovery discovery, IGenerator projectGeneration)
         {
@@ -98,185 +73,10 @@ namespace VisualStudioEditor
 
         internal static Dictionary<VisualStudioVersion, string[]> InstalledVisualStudios { get; private set; }
 
-        static bool IsOSX => Environment.OSVersion.Platform == PlatformID.Unix;
-        static bool IsWindows => !IsOSX && Path.DirectorySeparatorChar == '\\' && Environment.NewLine == "\r\n";
-        static readonly GUIContent k_AddUnityProjeToSln = EditorGUIUtility.TrTextContent("Add .unityproj's to .sln");
-
-        static string GetRegistryValue(string path, string key)
-        {
-            try
-            {
-                return Registry.GetValue(path, key, null) as string;
-            }
-            catch (Exception)
-            {
-                return "";
-            }
-        }
-
-        /// <summary>
-        /// Derives the Visual Studio installation path from the debugger path
-        /// </summary>
-        /// <returns>
-        /// The Visual Studio installation path (to devenv.exe)
-        /// </returns>
-        /// <param name='debuggerPath'>
-        /// The debugger path from the windows registry
-        /// </param>
-        static string DeriveVisualStudioPath(string debuggerPath)
-        {
-            string startSentinel = DeriveProgramFilesSentinel();
-            string endSentinel = "Common7";
-            bool started = false;
-            string[] tokens = debuggerPath.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
-
-            string path = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-
-            // Walk directories in debugger path, chop out "Program Files\INSTALLATION\PATH\HERE\Common7"
-            foreach (var token in tokens)
-            {
-                if (!started && string.Equals(startSentinel, token, StringComparison.OrdinalIgnoreCase))
-                {
-                    started = true;
-                    continue;
-                }
-                if (started)
-                {
-                    path = Path.Combine(path, token);
-                    if (string.Equals(endSentinel, token, StringComparison.OrdinalIgnoreCase))
-                        break;
-                }
-            }
-
-            return Path.Combine(path, "IDE", "devenv.exe");
-        }
-
-        /// <summary>
-        /// Derives the program files sentinel for grabbing the VS installation path.
-        /// </summary>
-        /// <remarks>
-        /// From a path like 'c:\Archivos de programa (x86)', returns 'Archivos de programa'
-        /// </remarks>
-        static string DeriveProgramFilesSentinel()
-        {
-            string path = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)
-                .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                .LastOrDefault();
-
-            if (!string.IsNullOrEmpty(path))
-            {
-                // This needs to be the "real" Program Files regardless of 64bitness
-                int index = path.LastIndexOf("(x86)");
-                if (0 <= index)
-                    path = path.Remove(index);
-                return path.TrimEnd();
-            }
-
-            return "Program Files";
-        }
+        internal static bool IsOSX => Environment.OSVersion.Platform == PlatformID.Unix;
+        internal static bool IsWindows => !IsOSX && Path.DirectorySeparatorChar == '\\' && Environment.NewLine == "\r\n";
 
         public CodeEditor.Installation[] Installations => m_Discoverability.PathCallback();
-
-        public static void ParseRawDevEnvPaths(string[] rawDevEnvPaths, Dictionary<VisualStudioVersion, string[]> versions)
-        {
-            if (rawDevEnvPaths == null)
-            {
-                return;
-            }
-
-            var v2017 = rawDevEnvPaths.Where(path => path.Contains("2017")).ToArray();
-            var v2019 = rawDevEnvPaths.Where(path => path.Contains("2019")).ToArray();
-
-            if (v2017.Length > 0)
-            {
-                versions[VisualStudioVersion.VisualStudio2017] = v2017;
-            }
-
-            if (v2019.Length > 0)
-            {
-                versions[VisualStudioVersion.VisualStudio2019] = v2019;
-            }
-        }
-
-        /// <summary>
-        /// Detects Visual Studio installations using the Windows registry
-        /// </summary>
-        /// <returns>
-        /// The detected Visual Studio installations
-        /// </returns>
-        internal static Dictionary<VisualStudioVersion, string[]> GetInstalledVisualStudios()
-        {
-            var versions = new Dictionary<VisualStudioVersion, string[]>();
-
-            if (IsWindows)
-            {
-                foreach (VisualStudioVersion version in Enum.GetValues(typeof(VisualStudioVersion)))
-                {
-                    if (version > VisualStudioVersion.VisualStudio2015)
-                        continue;
-
-                    try
-                    {
-                        // Try COMNTOOLS environment variable first
-                        FindLegacyVisualStudio(version, versions);
-                    }
-                    catch (Exception e)
-                    {
-                        UnityEngine.Debug.LogError($"VS: {e.Message}");
-                    }
-                }
-
-                var raw = FindVisualStudioDevEnvPaths();
-
-                ParseRawDevEnvPaths(raw.ToArray(), versions);
-            }
-
-            return versions;
-        }
-
-        static void FindLegacyVisualStudio(VisualStudioVersion version, Dictionary<VisualStudioVersion, string[]> versions)
-        {
-            string key = Environment.GetEnvironmentVariable($"VS{(int)version}0COMNTOOLS");
-            if (!string.IsNullOrEmpty(key))
-            {
-                string path = Path.Combine(key, "..", "IDE", "devenv.exe");
-                if (File.Exists(path))
-                {
-                    versions[version] = new[] { path };
-                    return;
-                }
-            }
-
-            // Try the proper registry key
-            key = GetRegistryValue(
-                $@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\{(int)version}.0", "InstallDir");
-
-            // Try to fallback to the 32bits hive
-            if (string.IsNullOrEmpty(key))
-                key = GetRegistryValue(
-                    $@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\{(int)version}.0", "InstallDir");
-
-            if (!string.IsNullOrEmpty(key))
-            {
-                string path = Path.Combine(key, "devenv.exe");
-                if (File.Exists(path))
-                {
-                    versions[version] = new[] { path };
-                    return;
-                }
-            }
-
-            // Fallback to debugger key
-            key = GetRegistryValue(
-                // VS uses this key for the local debugger path
-                $@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\{(int)version}.0\Debugger", "FEQARuntimeImplDll");
-            if (!string.IsNullOrEmpty(key))
-            {
-                string path = DeriveVisualStudioPath(key);
-                if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                    versions[version] = new[] { DeriveVisualStudioPath(key) };
-            }
-        }
 
         public void CreateIfDoesntExist()
         {
@@ -338,12 +138,13 @@ namespace VisualStudioEditor
                 GUILayout.EndHorizontal();
             }
 
-            if (m_Installation.Name.Equals("MonoDevelop"))
+            var prevGenerate = EditorPrefs.GetBool(unity_generate_all, false);
+            var generateAll = EditorGUILayout.Toggle("Generate all .csproj files.", prevGenerate);
+            if (generateAll != prevGenerate)
             {
-                m_ExternalEditorSupportsUnityProj = EditorGUILayout.Toggle(
-                    k_AddUnityProjeToSln,
-                    m_ExternalEditorSupportsUnityProj);
+                EditorPrefs.SetBool(unity_generate_all, generateAll);
             }
+            m_Generation.GenerateAll(generateAll);
         }
 
         public void SyncIfNeeded(string[] addedFiles, string[] deletedFiles, string[] movedFiles, string[] movedFromFiles, string[] importedFiles)
@@ -353,17 +154,37 @@ namespace VisualStudioEditor
 
         public void SyncAll()
         {
+            AssetDatabase.Refresh();
             m_Generation.Sync();
         }
 
         public void Initialize(string editorInstallationPath)
         {
-            m_Initiliazer.Initialize(editorInstallationPath, InstalledVisualStudios);
+            m_Initializer.Initialize(editorInstallationPath, InstalledVisualStudios);
         }
 
         public bool OpenProject(string path, int line, int column)
         {
-            var comAssetPath = AssetDatabase.FindAssets("COMIntegration a:packages").Select(AssetDatabase.GUIDToAssetPath).First(assetPath => assetPath.Contains("COMIntegration.exe"));
+            if (m_Installation.Name == "MonoDevelop") {
+                return OpenAppMonoDev(path, line, column);
+            }
+
+            if (IsOSX)
+            {
+                return OpenOSXApp(path, line, column);
+            }
+
+            if (IsWindows)
+            {
+                return OpenWindowsApp(path, line);
+            }
+
+            return false;
+        }
+
+        private bool OpenWindowsApp(string path, int line)
+        {
+            var comAssetPath = AssetDatabase.FindAssets("COMIntegration a:packages").Select(AssetDatabase.GUIDToAssetPath).First(assetPath => assetPath.Contains("COMIntegration.dom"));
             if (string.IsNullOrWhiteSpace(comAssetPath)) // This may be called too early where the asset database has not replicated this information yet.
             {
                 return false;
@@ -376,12 +197,8 @@ namespace VisualStudioEditor
                 absolutePath = Path.GetFullPath(path);
             }
 
-            var solution = GetSolutionFile(path);
-            if (solution == "")
-            {
-                m_Generation.Sync();
-                solution = GetSolutionFile(path);
-            }
+            
+            var solution = GetOrGenerateSolutionFile(path);
             solution = solution == "" ? "" : $"\"{solution}\"";
             var process = new Process
             {
@@ -420,7 +237,72 @@ namespace VisualStudioEditor
             return result;
         }
 
-        private string GetSolutionFile(string path)
+        bool OpenAppMonoDev(string path, int line, int column)
+        {
+            string absolutePath = "";
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                absolutePath = Path.GetFullPath(path);
+            }
+
+            var solution = GetOrGenerateSolutionFile(path);
+            solution = solution == "" ? "" : $"\"{solution}\"";
+            var pathArguments = path == "" ? "" : $"\"{path}\";{line}";
+            var fileName = IsOSX ? "open" : CodeEditor.CurrentEditorInstallation;
+            var arguments = IsOSX
+                ? $"\"{CodeEditor.CurrentEditorInstallation}\" --args --nologo {solution} {pathArguments}"
+                : $"--nologo {solution} {pathArguments}";
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    CreateNoWindow = true,
+                    UseShellExecute = true,
+                }
+            };
+
+            process.Start();
+
+            return true;
+        }
+
+        [DllImport ("AppleEventIntegrationPlugin")]
+        static extern void OpenVisualStudio(string appPath, string solutionPath, string filePath, int line, StringBuilder sb, int sbLength);
+
+        bool OpenOSXApp(string path, int line, int column)
+        {
+            string absolutePath = "";
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                absolutePath = Path.GetFullPath(path);
+            }
+
+            string solution = GetOrGenerateSolutionFile(path);
+
+            StringBuilder sb = new StringBuilder(4096);
+
+            OpenVisualStudio(CodeEditor.CurrentEditorInstallation, solution, absolutePath, line, sb, sb.Capacity);
+
+            Console.WriteLine(sb.ToString());
+
+            return true;
+        }
+
+        private string GetOrGenerateSolutionFile(string path)
+        {
+            var solution = GetSolutionFile(path);
+            if (solution == "")
+            {
+                m_Generation.Sync();
+                solution = GetSolutionFile(path);
+            }
+
+            return solution;
+        }
+
+        string GetSolutionFile(string path)
         {
             if (UnityEditor.Unsupported.IsDeveloperBuild())
             {
@@ -443,7 +325,7 @@ namespace VisualStudioEditor
             return "";
         }
 
-        private static string GetBaseUnityDeveloperFolder()
+        static string GetBaseUnityDeveloperFolder()
         {
             return Directory.GetParent(EditorApplication.applicationPath).Parent.Parent.FullName;
         }
