@@ -1,5 +1,10 @@
 # Code Editor Package for Visual Studio
 
+## [1.0.4] - 2019-04-12
+
+- Fixing null reference issue for callbacks to AssetPostProcessor.
+- Ensure Path.GetFullPath does not get an empty string.
+
 ## [1.0.3] - 2019-01-01
 
 ### This is the first release of *Unity Package visualstudio_editor*.

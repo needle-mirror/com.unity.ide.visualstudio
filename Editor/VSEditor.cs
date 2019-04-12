@@ -222,7 +222,7 @@ namespace VisualStudioEditor
                     }
                     catch (Exception e)
                     {
-                        UnityEngine.Debug.LogException(e);
+                        UnityEngine.Debug.LogError($"VS: {e.Message}");
                     }
                 }
 
@@ -370,7 +370,11 @@ namespace VisualStudioEditor
             }
             UnityEditor.PackageManager.PackageInfo packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(comAssetPath);
             var progpath = packageInfo.resolvedPath + comAssetPath.Substring("Packages/com.unity.ide.visualstudio".Length);
-            var fileInfo = new FileInfo(path).FullName;
+            string absolutePath = "";
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                absolutePath = Path.GetFullPath(path);
+            }
 
             var solution = GetSolutionFile(path);
             if (solution == "")
@@ -384,7 +388,7 @@ namespace VisualStudioEditor
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = progpath,
-                    Arguments = $"\"{CodeEditor.CurrentEditorInstallation}\" \"{fileInfo}\" {solution} {line}",
+                    Arguments = $"\"{CodeEditor.CurrentEditorInstallation}\" \"{absolutePath}\" {solution} {line}",
                     CreateNoWindow = true,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
@@ -409,7 +413,7 @@ namespace VisualStudioEditor
             var errorOutput = process.StandardError.ReadToEnd();
             if (!string.IsNullOrEmpty(errorOutput))
             {
-                UnityEngine.Debug.Log("Error: \n" + errorOutput);
+                Console.WriteLine("Error: \n" + errorOutput);
             }
 
             process.WaitForExit();

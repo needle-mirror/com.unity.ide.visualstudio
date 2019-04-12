@@ -225,6 +225,26 @@ namespace VisualStudioEditor
                 : ScriptingLanguage.None;
         }
 
+        static List<Type> SafeGetTypes(System.Reflection.Assembly a)
+        {
+            var ret = new List<Type>();
+
+            try
+            {
+                ret = a.GetTypes().ToList();
+            }
+            catch (System.Reflection.ReflectionTypeLoadException rtl)
+            {
+                ret = rtl.Types.ToList();
+            }
+            catch (Exception)
+            {
+                return new List<Type>();
+            }
+
+            return ret.Where(r => r != null).ToList();
+        }
+
         public void GenerateAndWriteSolutionAndProjects()
         {
             // Only synchronize islands that have associated source files and ones that we actually want in the project.
@@ -357,7 +377,7 @@ namespace VisualStudioEditor
 
         static void OnGeneratedCSProjectFiles()
         {
-            IEnumerable<Type> types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => x.GetTypes())
+            IEnumerable<Type> types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => SafeGetTypes(x))
             .Where(x => typeof(AssetPostprocessor).IsAssignableFrom(x) && !x.IsInterface && !x.IsAbstract);
             var args = new object[0];
             foreach (var type in types)
@@ -373,7 +393,7 @@ namespace VisualStudioEditor
 
         static bool OnPreGeneratingCSProjectFiles()
         {
-            IEnumerable<Type> types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => x.GetTypes())
+            IEnumerable<Type> types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => SafeGetTypes(x))
             .Where(x => typeof(AssetPostprocessor).IsAssignableFrom(x) && !x.IsInterface && !x.IsAbstract);
             bool result = false;
             foreach (var type in types)
@@ -395,7 +415,7 @@ namespace VisualStudioEditor
 
         static string OnGeneratedCSProject(string path, string content)
         {
-            IEnumerable<Type> types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => x.GetTypes())
+            IEnumerable<Type> types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => SafeGetTypes(x))
             .Where(x => typeof(AssetPostprocessor).IsAssignableFrom(x) && !x.IsInterface && !x.IsAbstract);
             foreach (var type in types)
             {
@@ -416,7 +436,7 @@ namespace VisualStudioEditor
 
         static string OnGeneratedSlnSolution(string path, string content)
         {
-            IEnumerable<Type> types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => x.GetTypes())
+            IEnumerable<Type> types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => SafeGetTypes(x))
             .Where(x => typeof(AssetPostprocessor).IsAssignableFrom(x) && !x.IsInterface && !x.IsAbstract);
             foreach (var type in types)
             {
