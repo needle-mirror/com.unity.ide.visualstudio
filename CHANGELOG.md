@@ -1,5 +1,9 @@
 # Code Editor Package for Visual Studio
 
+## [1.0.11] - 2019-05-21
+
+Fix detection of visual studio for mac installation.
+
 ## [1.0.10] - 2019-05-04
 
 Fix ignored comintegration executable

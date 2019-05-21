@@ -73,7 +73,7 @@ namespace VisualStudioEditor
 
         internal static Dictionary<VisualStudioVersion, string[]> InstalledVisualStudios { get; private set; }
 
-        internal static bool IsOSX => Environment.OSVersion.Platform == PlatformID.Unix;
+        internal static bool IsOSX => Application.platform == RuntimePlatform.OSXEditor;
         internal static bool IsWindows => !IsOSX && Path.DirectorySeparatorChar == '\\' && Environment.NewLine == "\r\n";
 
         public CodeEditor.Installation[] Installations => m_Discoverability.PathCallback();
@@ -89,7 +89,7 @@ namespace VisualStudioEditor
         public bool TryGetInstallationForPath(string editorPath, out CodeEditor.Installation installation)
         {
             var lowerCasePath = editorPath.ToLower();
-            if (lowerCasePath.EndsWith("vcsexpress.exe"))
+            if (lowerCasePath.EndsWith("vcsexpress.exe", StringComparison.OrdinalIgnoreCase))
             {
                 installation = new CodeEditor.Installation
                 {
@@ -100,7 +100,9 @@ namespace VisualStudioEditor
                 return true;
             }
 
-            if (lowerCasePath.EndsWith("devenv.exe"))
+            if (lowerCasePath.EndsWith("devenv.exe", StringComparison.OrdinalIgnoreCase)
+                || lowerCasePath.Replace(" ", "").EndsWith("visualstudio.app", StringComparison.OrdinalIgnoreCase)
+                || lowerCasePath.Replace(" ", "").EndsWith("visualstudio(preview).app", StringComparison.OrdinalIgnoreCase))
             {
                 installation = new CodeEditor.Installation
                 {
@@ -110,9 +112,9 @@ namespace VisualStudioEditor
                 m_Installation = installation;
                 return true;
             }
-            var filename = Path.GetFileName(lowerCasePath.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)).Replace(" ", "");
 
-            if (filename == "visualstudio.app" || filename == "visualstudio(preview).app" || lowerCasePath.Contains("monodevelop") || lowerCasePath.Contains("xamarinstudio") || lowerCasePath.Contains("xamarin studio"))
+            if (lowerCasePath.Contains("monodevelop")
+                || lowerCasePath.Replace(" ", "").Contains("xamarinstudio"))
             {
                 installation = new CodeEditor.Installation
                 {
