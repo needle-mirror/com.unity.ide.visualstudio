@@ -1,275 +1,165 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Unity Technologies.
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
 using System;
 using System.IO;
 using System.Collections.Generic;
-using System.Linq;
-using Unity.CodeEditor;
 using UnityEngine;
-using UnityEditor;
 using System.Diagnostics;
-using Microsoft.Win32;
+using System.Text.RegularExpressions;
+using System.Linq;
 
-namespace VisualStudioEditor
+namespace Microsoft.Unity.VisualStudio.Editor
 {
-    public interface IDiscovery {
-        CodeEditor.Installation[] PathCallback();
-    }
+	internal static class Discovery
+	{
+		public static IEnumerable<VisualStudioInstallation> GetVisualStudioInstallations()
+		{
+			if (VisualStudioEditor.IsWindows)
+			{
+				foreach (var installation in QueryVsWhere())
+					yield return installation;
+			}
 
-    public class Discovery : IDiscovery {
-        internal static string VisualStudioVersionToNiceName(VisualStudioVersion version)
-        {
-            switch (version)
-            {
-                case VisualStudioVersion.Invalid: return "Invalid Version";
-                case VisualStudioVersion.VisualStudio2008: return "Visual Studio 2008";
-                case VisualStudioVersion.VisualStudio2010: return "Visual Studio 2010";
-                case VisualStudioVersion.VisualStudio2012: return "Visual Studio 2012";
-                case VisualStudioVersion.VisualStudio2013: return "Visual Studio 2013";
-                case VisualStudioVersion.VisualStudio2015: return "Visual Studio 2015";
-                case VisualStudioVersion.VisualStudio2017: return "Visual Studio 2017";
-                case VisualStudioVersion.VisualStudio2019: return "Visual Studio 2019";
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(version), version, null);
-            }
-        }
+			if (VisualStudioEditor.IsOSX)
+			{
+				var candidates = Directory.EnumerateDirectories("/Applications", "*.app");
+				foreach (var candidate in candidates)
+				{
+					if (TryDiscoverInstallation(candidate, out var installation))
+						yield return installation;
+				}
+			}
+		}
 
-        public CodeEditor.Installation[] PathCallback()
-        {
-            try
-            {
-                if (VSEditor.IsWindows)
-                {
-                    return GetInstalledVisualStudios().Select(pair => new CodeEditor.Installation
-                    {
-                        Path = pair.Value[0],
-                        Name = VisualStudioVersionToNiceName(pair.Key)
-                    }).ToArray();
-                }
-                if (VSEditor.IsOSX)
-                {
-                    var installationList = new List<CodeEditor.Installation>();
-                    AddIfDirectoryExists("Visual Studio", "/Applications/Visual Studio.app", installationList);
-                    AddIfDirectoryExists("Visual Studio (Preview)", "/Applications/Visual Studio (Preview).app", installationList);
-                    return installationList.ToArray();
-                }
-            }
-            catch (Exception ex)
-            {
-                UnityEngine.Debug.Log($"Error detecting Visual Studio installations: {ex.Message}{Environment.NewLine}{ex.StackTrace}");
-            }
-            return new CodeEditor.Installation[0];
-        }
+		private static bool IsCandidateToDiscovery(string path)
+		{
+			if (File.Exists(path) && VisualStudioEditor.IsWindows && Regex.IsMatch(path, "devenv.exe$", RegexOptions.IgnoreCase))
+				return true;
 
-        void AddIfDirectoryExists(string name, string path, List<CodeEditor.Installation> installations)
-        {
-            if (Directory.Exists(path))
-            {
-                installations.Add(new CodeEditor.Installation { Name = name, Path = path });
-            }
-        }
+			if (Directory.Exists(path) && VisualStudioEditor.IsOSX && Regex.IsMatch(path, "Visual\\s?Studio(?!.*Code.*).*.app$", RegexOptions.IgnoreCase))
+				return true;
 
-        static string GetRegistryValue(string path, string key)
-        {
-            try
-            {
-                return Registry.GetValue(path, key, null) as string;
-            }
-            catch (Exception)
-            {
-                return "";
-            }
-        }
+			return false;
+		}
 
-        /// <summary>
-        /// Derives the Visual Studio installation path from the debugger path
-        /// </summary>
-        /// <returns>
-        /// The Visual Studio installation path (to devenv.exe)
-        /// </returns>
-        /// <param name='debuggerPath'>
-        /// The debugger path from the windows registry
-        /// </param>
-        static string DeriveVisualStudioPath(string debuggerPath)
-        {
-            string startSentinel = DeriveProgramFilesSentinel();
-            string endSentinel = "Common7";
-            bool started = false;
-            string[] tokens = debuggerPath.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+		public static bool TryDiscoverInstallation(string editorPath, out VisualStudioInstallation installation)
+		{
+			installation = null;
 
-            string path = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+			if (string.IsNullOrEmpty(editorPath))
+				return false;
 
-            // Walk directories in debugger path, chop out "Program Files\INSTALLATION\PATH\HERE\Common7"
-            foreach (var token in tokens)
-            {
-                if (!started && string.Equals(startSentinel, token, StringComparison.OrdinalIgnoreCase))
-                {
-                    started = true;
-                    continue;
-                }
-                if (started)
-                {
-                    path = Path.Combine(path, token);
-                    if (string.Equals(endSentinel, token, StringComparison.OrdinalIgnoreCase))
-                        break;
-                }
-            }
+			if (!IsCandidateToDiscovery(editorPath))
+				return false;
 
-            return Path.Combine(path, "IDE", "devenv.exe");
-        }
+			// On windows we use the executable directly, so we can query extra information
+			var fvi = editorPath;
 
-        /// <summary>
-        /// Derives the program files sentinel for grabbing the VS installation path.
-        /// </summary>
-        /// <remarks>
-        /// From a path like 'c:\Archivos de programa (x86)', returns 'Archivos de programa'
-        /// </remarks>
-        static string DeriveProgramFilesSentinel()
-        {
-            string path = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)
-                .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                .LastOrDefault();
+			// On Mac we use the .app folder, so we need to access to main assembly
+			if (VisualStudioEditor.IsOSX)
+				fvi = Path.Combine(editorPath, "Contents", "Resources", "lib", "monodevelop", "bin", "VisualStudio.exe");
+			
+			if (!File.Exists(fvi))
+				return false;
 
-            if (!string.IsNullOrEmpty(path))
-            {
-                // This needs to be the "real" Program Files regardless of 64bitness
-                int index = path.LastIndexOf("(x86)");
-                if (0 <= index)
-                    path = path.Remove(index);
-                return path.TrimEnd();
-            }
+			// VS preview are not using the isPrerelease flag so far
+			// On Windows FileDescription contains "Preview", but not on Mac
+			var vi = FileVersionInfo.GetVersionInfo(fvi);
+			var version = new Version(vi.ProductVersion);
+			var isPrerelease = vi.IsPreRelease || string.Concat(editorPath, "/" + vi.FileDescription).ToLower().Contains("preview");
 
-            return "Program Files";
-        }
+			installation = new VisualStudioInstallation()
+			{
+				IsPrerelease = isPrerelease,
+				Name = $"{vi.FileDescription}{(isPrerelease && VisualStudioEditor.IsOSX ? " Preview" : string.Empty)} [{version.ToString(3)}]",
+				Path = editorPath,
+				Version = version
+			};
+			return true;
+		}
 
-        public static void ParseRawDevEnvPaths(string[] rawDevEnvPaths, Dictionary<VisualStudioVersion, string[]> versions)
-        {
-            if (rawDevEnvPaths == null)
-            {
-                return;
-            }
+		#region VsWhere Json Schema
+		#pragma warning disable CS0649
+		[Serializable]
+		internal class VsWhereResult
+		{
+			public VsWhereEntry[] entries;
 
-            var v2017 = rawDevEnvPaths.Where(path => path.Contains("2017")).ToArray();
-            var v2019 = rawDevEnvPaths.Where(path => path.Contains("2019")).ToArray();
+			public static VsWhereResult FromJson(string json)
+			{
+				return JsonUtility.FromJson<VsWhereResult>("{ \"" + nameof(VsWhereResult.entries) + "\": " + json + " }");
+			}
 
-            if (v2017.Length > 0)
-            {
-                versions[VisualStudioVersion.VisualStudio2017] = v2017;
-            }
+			public IEnumerable<VisualStudioInstallation> ToVisualStudioInstallations()
+			{
+				foreach(var entry in entries)
+				{
+					yield return new VisualStudioInstallation()
+					{
+						Name = $"{entry.displayName} [{entry.catalog.productDisplayVersion}]",
+						Path = entry.productPath,
+						IsPrerelease = entry.isPrerelease,
+						Version = Version.Parse(entry.catalog.buildVersion)
+					};
+				}
+			}
+		}
 
-            if (v2019.Length > 0)
-            {
-                versions[VisualStudioVersion.VisualStudio2019] = v2019;
-            }
-        }
+		[Serializable]
+		internal class VsWhereEntry
+		{
+			public string displayName;
+			public bool isPrerelease;
+			public string productPath;
+			public VsWhereCatalog catalog;
+		}
 
-        /// <summary>
-        /// Detects Visual Studio installations using the Windows registry
-        /// </summary>
-        /// <returns>
-        /// The detected Visual Studio installations
-        /// </returns>
-        public static Dictionary<VisualStudioVersion, string[]> GetInstalledVisualStudios()
-        {
-            var versions = new Dictionary<VisualStudioVersion, string[]>();
+		[Serializable]
+		internal class VsWhereCatalog
+		{
+			public string productDisplayVersion; // non parseable like "16.3.0 Preview 3.0"
+			public string buildVersion;
+		}
+		#pragma warning restore CS3021
+		#endregion
 
-            if (VSEditor.IsWindows)
-            {
-                foreach (VisualStudioVersion version in Enum.GetValues(typeof(VisualStudioVersion)))
-                {
-                    if (version > VisualStudioVersion.VisualStudio2015)
-                        continue;
+		private static IEnumerable<VisualStudioInstallation> QueryVsWhere()
+		{
+			var progpath = FileUtility
+				.FindPackageAssetFullPath("VSWhere a:packages", "vswhere.exe")
+				.FirstOrDefault();
 
-                    try
-                    {
-                        // Try COMNTOOLS environment variable first
-                        FindLegacyVisualStudio(version, versions);
-                    }
-                    catch (Exception e)
-                    {
-                        UnityEngine.Debug.LogError($"VS: {e.Message}");
-                    }
-                }
+			if (string.IsNullOrWhiteSpace(progpath))
+				return Enumerable.Empty<VisualStudioInstallation>();
 
-                var raw = FindVisualStudioDevEnvPaths();
+			var process = new Process
+			{
+				StartInfo = new ProcessStartInfo
+				{
+					FileName = progpath,
+					Arguments = "-prerelease -format json",
+					UseShellExecute = false,
+					CreateNoWindow = true,
+					RedirectStandardOutput = true,
+					RedirectStandardError = true,
+				}
+			};
 
-                ParseRawDevEnvPaths(raw.ToArray(), versions);
-            }
+			using (process)
+			{
+				var json = string.Empty;
 
-            return versions;
-        }
+				process.OutputDataReceived += (o, e) => json += e.Data;
+				process.Start();
+				process.BeginOutputReadLine();
+				process.WaitForExit();
 
-        static void FindLegacyVisualStudio(VisualStudioVersion version, Dictionary<VisualStudioVersion, string[]> versions)
-        {
-            string key = Environment.GetEnvironmentVariable($"VS{(int)version}0COMNTOOLS");
-            if (!string.IsNullOrEmpty(key))
-            {
-                string path = Path.Combine(key, "..", "IDE", "devenv.exe");
-                if (File.Exists(path))
-                {
-                    versions[version] = new[] { path };
-                    return;
-                }
-            }
-
-            // Try the proper registry key
-            key = GetRegistryValue(
-                $@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\{(int)version}.0", "InstallDir");
-
-            // Try to fallback to the 32bits hive
-            if (string.IsNullOrEmpty(key))
-                key = GetRegistryValue(
-                    $@"HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\{(int)version}.0", "InstallDir");
-
-            if (!string.IsNullOrEmpty(key))
-            {
-                string path = Path.Combine(key, "devenv.exe");
-                if (File.Exists(path))
-                {
-                    versions[version] = new[] { path };
-                    return;
-                }
-            }
-
-            // Fallback to debugger key
-            key = GetRegistryValue(
-                // VS uses this key for the local debugger path
-                $@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\{(int)version}.0\Debugger", "FEQARuntimeImplDll");
-            if (!string.IsNullOrEmpty(key))
-            {
-                string path = DeriveVisualStudioPath(key);
-                if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                    versions[version] = new[] { DeriveVisualStudioPath(key) };
-            }
-        }
-
-        static IEnumerable<string> FindVisualStudioDevEnvPaths()
-        {
-            string asset = AssetDatabase.FindAssets("VSWhere a:packages").Select(AssetDatabase.GUIDToAssetPath).FirstOrDefault(assetPath => assetPath.Contains("vswhere.exe"));
-            if (string.IsNullOrWhiteSpace(asset)) // This may be called too early where the asset database has not replicated this information yet.
-            {
-                yield break;
-            }
-            UnityEditor.PackageManager.PackageInfo packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(asset);
-            var progpath = packageInfo.resolvedPath + asset.Substring("Packages/com.unity.ide.visualstudio".Length);
-            var process = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = progpath,
-                    Arguments = "-prerelease -property productPath",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                }
-            };
-
-            process.Start();
-            process.WaitForExit();
-
-            while (!process.StandardOutput.EndOfStream)
-            {
-                yield return process.StandardOutput.ReadLine();
-            }
-        }
-    }
+				var result = VsWhereResult.FromJson(json);
+				return result.ToVisualStudioInstallations();
+			}
+		}
+	}
 }
