@@ -80,8 +80,6 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public void OnGUI()
 		{
-			const string unity_generate_all = "unity_generate_all_csproj";
-
 			GUILayout.BeginHorizontal();
 			GUILayout.FlexibleSpace();
 
@@ -96,14 +94,38 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			GUILayout.Label($"<size=10><color=grey>{package.displayName} v{package.version} enabled</color></size>", style);
 			GUILayout.EndHorizontal();
 
-			var prevGenerate = EditorPrefs.GetBool(unity_generate_all, false);
-			var generateAll = EditorGUILayout.Toggle("Generate all .csproj files.", prevGenerate);
-			if (generateAll != prevGenerate)
-			{
-				EditorPrefs.SetBool(unity_generate_all, generateAll);
-			}
+			EditorGUILayout.LabelField("Generate .csproj files for:");
+			EditorGUI.indentLevel++;
+			SettingsButton(ProjectGenerationFlag.Embedded, "Embedded packages", "");
+			SettingsButton(ProjectGenerationFlag.Local, "Local packages", "");
+			SettingsButton(ProjectGenerationFlag.Registry, "Registry packages", "");
+			SettingsButton(ProjectGenerationFlag.Git, "Git packages", "");
+			SettingsButton(ProjectGenerationFlag.BuiltIn, "Built-in packages", "");
+			SettingsButton(ProjectGenerationFlag.LocalTarBall, "Local tarball", "");
+			SettingsButton(ProjectGenerationFlag.Unknown, "Packages from unknown sources", "");
+			SettingsButton(ProjectGenerationFlag.PlayerAssemblies, "Player projects", "For each player project generate an additional csproj with the name 'project-player.csproj'");
+			RegenerateProjectFiles();
+			EditorGUI.indentLevel--;
+		}
 
-			_generator.GenerateAll(generateAll);
+		void RegenerateProjectFiles()
+        {
+            var rect = EditorGUI.IndentedRect(EditorGUILayout.GetControlRect(new GUILayoutOption[] {}));
+            rect.width = 252;
+            if (GUI.Button(rect, "Regenerate project files"))
+            {
+                _generator.Sync();
+            }
+        }
+
+		void SettingsButton(ProjectGenerationFlag preference, string guiMessage, string toolTip)
+		{
+			var prevValue = _generator.AssemblyNameProvider.ProjectGenerationFlag.HasFlag(preference);
+			var newValue = EditorGUILayout.Toggle(new GUIContent(guiMessage, toolTip), prevValue);
+			if (newValue != prevValue)
+			{
+				_generator.AssemblyNameProvider.ToggleProjectGeneration(preference);
+			}
 		}
 
 		public void SyncIfNeeded(string[] addedFiles, string[] deletedFiles, string[] movedFiles, string[] movedFromFiles, string[] importedFiles)
@@ -113,6 +135,11 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			foreach (var file in importedFiles.Where(a => Path.GetExtension(a) == ".pdb"))
 			{
 				var pdbFile = FileUtility.GetAssetFullPath(file);
+				var asmFile = Path.ChangeExtension(pdbFile, ".dll");
+
+				if (!File.Exists(asmFile) || !Image.IsAssembly(asmFile))
+					continue;
+
 				if (Symbols.IsPortableSymbolFile(pdbFile))
 					continue;
 

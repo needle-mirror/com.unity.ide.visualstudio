@@ -31,6 +31,20 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			}
 		}
 
+		public bool SupportsCSharp8
+		{
+			get
+			{
+				if (VisualStudioEditor.IsWindows)
+					return Version >= new Version(16, 0);
+
+				if (VisualStudioEditor.IsOSX)
+					return Version >= new Version(8, 2);
+
+				return false;
+			}
+		}
+
 		private static string ReadRegistry(RegistryKey hive, string keyName, string valueName)
 		{
 			try

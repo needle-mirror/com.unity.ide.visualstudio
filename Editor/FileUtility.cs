@@ -43,6 +43,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 			if (Path.DirectorySeparatorChar == WinSeparator)
 				path = path.Replace(UnixSeparator, WinSeparator);
+			if (Path.DirectorySeparatorChar == UnixSeparator)
+				path = path.Replace(WinSeparator, UnixSeparator);
 
 			return path.Replace(string.Concat(WinSeparator, WinSeparator), WinSeparator.ToString());
 		}
@@ -56,37 +58,6 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				fileName = Path.Combine(basePath, fileName);
 
 			return string.Equals(Path.GetDirectoryName(fileName), basePath, StringComparison.OrdinalIgnoreCase);
-		}
-
-		public static string FileNameWithoutExtension(string path)
-		{
-			if (string.IsNullOrEmpty(path))
-			{
-				return "";
-			}
-
-			var indexOfDot = -1;
-			var indexOfSlash = 0;
-			for (var i = path.Length - 1; i >= 0; i--)
-			{
-				if (indexOfDot == -1 && path[i] == '.')
-				{
-					indexOfDot = i;
-				}
-
-				if (indexOfSlash == 0 && path[i] == '/' || path[i] == '\\')
-				{
-					indexOfSlash = i + 1;
-					break;
-				}
-			}
-
-			if (indexOfDot == -1)
-			{
-				indexOfDot = path.Length - 1;
-			}
-
-			return path.Substring(indexOfSlash, indexOfDot - indexOfSlash);
 		}
 	}
 }

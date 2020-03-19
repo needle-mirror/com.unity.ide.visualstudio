@@ -15,9 +15,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private static readonly Regex PropertiesDeclaration = new Regex(@"GlobalSection\((?<name>[\w]+Properties)\)\s+=\s+(?<type>(?:post|pre)Solution)(?<entries>.*?)EndGlobalSection", RegexOptions.Singleline | RegexOptions.ExplicitCapture);
 		private static readonly Regex PropertiesEntryDeclaration = new Regex(@"^\s*(?<key>.*?)=(?<value>.*?)$", RegexOptions.Multiline | RegexOptions.ExplicitCapture);
 
-		public static Solution ParseSolutionFile(string filename)
+		public static Solution ParseSolutionFile(string filename, IFileIO fileIO)
 		{
-			return ParseSolutionContent(File.ReadAllText(filename));
+			return ParseSolutionContent(fileIO.ReadAllText(filename));
 		}
 
 		public static Solution ParseSolutionContent(string content)

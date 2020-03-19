@@ -1,5 +1,13 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.1] - 2020-03-19
+
+When Visual Studio installation is compatible with C# 8.0, setup the language version to not prompt the user with unsupported constructs. (So far Unity only supports C# 7.3).
+Use Unity's TypeCache to improve project generation speed.
+Properly check for a managed assembly before displaying a warning regarding legacy PDB usage.
+Add support for selective project generation (embedded, local, registry, git, builtin, player).
+
+
 ## [2.0.0] - 2019-11-06
 
 - Improved Visual Studio and Visual Studio for Mac automatic discovery
