@@ -46,6 +46,14 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			CodeEditor.Register(new VisualStudioEditor());
 		}
 
+		internal static bool IsEnabled
+		{
+			get
+			{
+				return CodeEditor.CurrentEditor is VisualStudioEditor;
+			}
+		}
+
 		public void CreateIfDoesntExist()
 		{
 			if (!_generator.HasSolutionBeenGenerated())

@@ -11,8 +11,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 	internal static class SolutionParser
 	{
 		// Compared to the bridge implementation, we are not returning "{" "}" from Guids
-		private static readonly Regex ProjectDeclaration = new Regex(@"Project\(\""{(?<projectFactoryGuid>.*?)}\""\)\s+=\s+\""(?<name>.*?)\"",\s+\""(?<fileName>.*?)\"",\s+\""{(?<projectGuid>.*?)}\""(?<content>.*?)\bEndProject\b", RegexOptions.Singleline | RegexOptions.ExplicitCapture);
-		private static readonly Regex PropertiesDeclaration = new Regex(@"GlobalSection\((?<name>[\w]+Properties)\)\s+=\s+(?<type>(?:post|pre)Solution)(?<entries>.*?)EndGlobalSection", RegexOptions.Singleline | RegexOptions.ExplicitCapture);
+		private static readonly Regex ProjectDeclaration = new Regex(@"Project\(\""{(?<projectFactoryGuid>.*?)}\""\)\s+=\s+\""(?<name>.*?)\"",\s+\""(?<fileName>.*?)\"",\s+\""{(?<projectGuid>.*?)}\""(?<metadata>.*?)\bEndProject\b", RegexOptions.Singleline | RegexOptions.ExplicitCapture);
+		private static readonly Regex PropertiesDeclaration = new Regex(@"GlobalSection\((?<name>([\w]+Properties|NestedProjects))\)\s+=\s+(?<type>(?:post|pre)Solution)(?<entries>.*?)EndGlobalSection", RegexOptions.Singleline | RegexOptions.ExplicitCapture);
 		private static readonly Regex PropertiesEntryDeclaration = new Regex(@"^\s*(?<key>.*?)=(?<value>.*?)$", RegexOptions.Multiline | RegexOptions.ExplicitCapture);
 
 		public static Solution ParseSolutionFile(string filename, IFileIO fileIO)
@@ -42,6 +42,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 					Name = match.Groups["name"].Value,
 					FileName = match.Groups["fileName"].Value,
 					ProjectGuid = match.Groups["projectGuid"].Value,
+					Metadata = match.Groups["metadata"].Value
 				});
 			}
 

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using Microsoft.Unity.VisualStudio.Editor.Messaging;
 using UnityEditor;
 using UnityEngine;
@@ -21,14 +22,27 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private static readonly Queue<Message> Incoming = new Queue<Message>();
 		private static readonly object IncomingLock = new object();
 
-		public static Application.LogCallback LogCallback = delegate { };
-
 		static VisualStudioIntegration()
 		{
+			if (!VisualStudioEditor.IsEnabled)
+				return;
+
 			RunOnceOnUpdate(() =>
 			{
-				_messager = Messager.BindTo(MessagingPort());
-				_messager.ReceiveMessage += ReceiveMessage;
+				// Despite using ReuseAddress|!ExclusiveAddressUse, we can fail here:
+				// - if another application is using this port with exclusive access
+				// - or if the firewall is not properly configured
+				var messagingPort = MessagingPort();
+				
+				try {
+					_messager = Messager.BindTo(messagingPort);
+					_messager.ReceiveMessage += ReceiveMessage;
+				}
+				catch (SocketException)
+				{
+					// We'll have a chance to try to rebind on next domain reload
+					Debug.LogWarning($"Unable to use UDP port {messagingPort} for VS/Unity messaging. You should check if another process is already bound to this port or if your firewall settings are compatible.");
+				}
 
 				RunOnShutdown(Shutdown);
 			});
