@@ -517,9 +517,13 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
             if (m_CurrentInstallation != null && m_CurrentInstallation.SupportsCSharp8)
             {
-                // Current installation is compatible with C# 8.
-                // But Unity has no support for C# 8 constructs so far, so tell the compiler to accept only C# 7.3 or lower.
+                // Current VS installation is compatible with C# 8.
+
+#if !UNITY_2020_2_OR_NEWER
+                // Unity 2020.2.0a12 added support for C# 8
+                // <=2020.1 has no support for C# 8 constructs, so tell the compiler to accept only C# 7.3 or lower.
                 targetLanguageVersion = "7.3";
+#endif
             }
 
             var projectType = ProjectTypeOf(assembly.name);
@@ -535,7 +539,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
                 MSBuildNamespaceUri,
                 assembly.name,
                 assembly.outputPath,
-                m_AssemblyNameProvider.ProjectGenerationRootNamespace,
+                GetRootNamespace(assembly),
                 targetFrameworkVersion,
                 targetLanguageVersion,
                 baseDirectory,
@@ -544,6 +548,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
                 projectType + ":" + (int)projectType,
                 EditorUserBuildSettings.activeBuildTarget + ":" + (int)EditorUserBuildSettings.activeBuildTarget,
                 Application.unityVersion,
+                VisualStudioIntegration.PackageVersion()
             };
 
             try
@@ -676,6 +681,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
                 @"  <PropertyGroup>",
                 @"    <ProjectTypeGuids>{{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1}};{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}</ProjectTypeGuids>",
                 @"    <UnityProjectGenerator>Package</UnityProjectGenerator>",
+                @"    <UnityProjectGeneratorVersion>{17}</UnityProjectGeneratorVersion>",
                 @"    <UnityProjectType>{14}</UnityProjectType>",
                 @"    <UnityBuildTarget>{15}</UnityBuildTarget>",
                 @"    <UnityVersion>{16}</UnityVersion>",
@@ -877,6 +883,15 @@ namespace Microsoft.Unity.VisualStudio.Editor
         string SolutionGuid(Assembly assembly)
         {
             return m_GUIDGenerator.SolutionGuid(m_ProjectName, ScriptingLanguageFor(assembly));
+        }
+
+        static string GetRootNamespace(Assembly assembly)
+        {
+ #if UNITY_2020_2_OR_NEWER
+            return assembly.rootNamespace;
+#else
+            return EditorSettings.projectGenerationRootNamespace;
+#endif
         }
     }
 

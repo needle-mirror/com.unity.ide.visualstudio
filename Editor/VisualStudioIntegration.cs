@@ -144,7 +144,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			}
 		}
 
-		private static string PackageVersion()
+		internal static string PackageVersion()
 		{
 			var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(VisualStudioIntegration).Assembly);
 			return package.version;
@@ -152,6 +152,10 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private static void Refresh()
 		{
+			// If the user disabled auto-refresh in Unity, do not try to force refresh the Asset database
+			if (!EditorPrefs.GetBool("kAutoRefresh", true))
+				return;
+			
 			RunOnceOnUpdate(AssetDatabase.Refresh);
 		}
 

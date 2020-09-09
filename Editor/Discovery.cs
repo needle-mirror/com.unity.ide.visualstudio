@@ -140,7 +140,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				StartInfo = new ProcessStartInfo
 				{
 					FileName = progpath,
-					Arguments = "-prerelease -format json",
+					Arguments = "-prerelease -format json -utf8",
 					UseShellExecute = false,
 					CreateNoWindow = true,
 					RedirectStandardOutput = true,

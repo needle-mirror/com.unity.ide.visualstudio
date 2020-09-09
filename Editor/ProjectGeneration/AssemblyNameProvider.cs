@@ -25,7 +25,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
     public class AssemblyNameProvider : IAssemblyNameProvider
     {
-        ProjectGenerationFlag m_ProjectGenerationFlag = (ProjectGenerationFlag)EditorPrefs.GetInt("unity_project_generation_flag", 0);
+        ProjectGenerationFlag m_ProjectGenerationFlag = (ProjectGenerationFlag)EditorPrefs.GetInt(
+            "unity_project_generation_flag",
+            (int)(ProjectGenerationFlag.Local | ProjectGenerationFlag.Embedded));
 
         public string[] ProjectSupportedExtensions => EditorSettings.projectGenerationUserExtensions;
 
@@ -52,15 +54,24 @@ namespace Microsoft.Unity.VisualStudio.Editor
             {
                 if (assembly.sourceFiles.Any(shouldFileBePartOfSolution))
                 {
-					yield return new Assembly(assembly.name, @"Temp\Bin\Debug\", assembly.sourceFiles, new[] { "DEBUG", "TRACE" }.Concat(assembly.defines).Concat(EditorUserBuildSettings.activeScriptCompilationDefines).ToArray(), assembly.assemblyReferences, assembly.compiledAssemblyReferences, assembly.flags)
-					{ 
-						compilerOptions =
-                        {
-                            ResponseFiles = assembly.compilerOptions.ResponseFiles,
-                            AllowUnsafeCode = assembly.compilerOptions.AllowUnsafeCode,
-                            ApiCompatibilityLevel = assembly.compilerOptions.ApiCompatibilityLevel
-                        }
+                    var options = new ScriptCompilerOptions()
+                    {
+                        ResponseFiles = assembly.compilerOptions.ResponseFiles,
+                        AllowUnsafeCode = assembly.compilerOptions.AllowUnsafeCode,
+                        ApiCompatibilityLevel = assembly.compilerOptions.ApiCompatibilityLevel
                     };
+
+					yield return new Assembly(assembly.name, @"Temp\Bin\Debug\", 
+                        assembly.sourceFiles, new[] { "DEBUG", "TRACE" }.Concat(assembly.defines).Concat(EditorUserBuildSettings.activeScriptCompilationDefines).ToArray(), 
+                        assembly.assemblyReferences, 
+                        assembly.compiledAssemblyReferences, 
+                        assembly.flags,
+#if UNITY_2020_2_OR_NEWER
+                        options,
+                        assembly.rootNamespace);
+#else
+                        options);
+#endif
                 }
             }
 
@@ -68,15 +79,25 @@ namespace Microsoft.Unity.VisualStudio.Editor
             {
                 foreach (var assembly in CompilationPipeline.GetAssemblies(AssembliesType.Player).Where(assembly => assembly.sourceFiles.Any(shouldFileBePartOfSolution)))
                 {
-					yield return new Assembly(assembly.name, @"Temp\Bin\Debug\Player\", assembly.sourceFiles, new[] { "DEBUG", "TRACE" }.Concat(assembly.defines).ToArray(), assembly.assemblyReferences, assembly.compiledAssemblyReferences, assembly.flags)
-					{
-                        compilerOptions =
-                        {
-                            ResponseFiles = assembly.compilerOptions.ResponseFiles,
-                            AllowUnsafeCode = assembly.compilerOptions.AllowUnsafeCode,
-                            ApiCompatibilityLevel = assembly.compilerOptions.ApiCompatibilityLevel
-                        }
+                    var options = new ScriptCompilerOptions()
+                    {
+                        ResponseFiles = assembly.compilerOptions.ResponseFiles,
+                        AllowUnsafeCode = assembly.compilerOptions.AllowUnsafeCode,
+                        ApiCompatibilityLevel = assembly.compilerOptions.ApiCompatibilityLevel
                     };
+
+					yield return new Assembly(assembly.name, @"Temp\Bin\Debug\Player\", 
+                        assembly.sourceFiles, 
+                        new[] { "DEBUG", "TRACE" }.Concat(assembly.defines).ToArray(), 
+                        assembly.assemblyReferences, 
+                        assembly.compiledAssemblyReferences, 
+                        assembly.flags,
+#if UNITY_2020_2_OR_NEWER
+                        options,
+                        assembly.rootNamespace);
+#else
+                        options);
+#endif
                 }
             }
         }

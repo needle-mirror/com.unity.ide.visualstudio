@@ -1,5 +1,20 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.3] - 2020-09-09
+
+Project generation:
+
+Added C#8 language support.
+Added UnityProjectGeneratorVersion property.
+Local and Embedded packages are now selected by default for generation.
+Added support for asmdef root namespace.
+
+Integration:
+
+When the user disabled auto-refresh in Unity, do not try to force refresh the Asset database.
+Fix Visual Studio detection issues with languages using special characters.
+
+
 ## [2.0.2] - 2020-05-27
 
 Added support for solution folders.
