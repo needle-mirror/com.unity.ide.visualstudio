@@ -1,5 +1,12 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.5] - 2020-10-30
+
+Integration:
+
+Disable legacy pdb symbol checking for Unity packages
+
+
 ## [2.0.3] - 2020-09-09
 
 Project generation:

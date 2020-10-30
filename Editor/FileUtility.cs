@@ -49,6 +49,14 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return path.Replace(string.Concat(WinSeparator, WinSeparator), WinSeparator.ToString());
 		}
 
+		public static string NormalizeWindowsToUnix(string path)
+		{
+			if (string.IsNullOrEmpty(path))
+				return path;
+
+			return path.Replace(WinSeparator, UnixSeparator);
+		}
+
 		internal static bool IsFileInProjectDirectory(string fileName)
 		{
 			var basePath = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));

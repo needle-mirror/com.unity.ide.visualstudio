@@ -33,8 +33,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				// - if another application is using this port with exclusive access
 				// - or if the firewall is not properly configured
 				var messagingPort = MessagingPort();
-				
-				try {
+
+				try
+				{
 					_messager = Messager.BindTo(messagingPort);
 					_messager.ReceiveMessage += ReceiveMessage;
 				}
@@ -155,7 +156,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			// If the user disabled auto-refresh in Unity, do not try to force refresh the Asset database
 			if (!EditorPrefs.GetBool("kAutoRefresh", true))
 				return;
-			
+
 			RunOnceOnUpdate(AssetDatabase.Refresh);
 		}
 

@@ -10,7 +10,16 @@ using IOPath = System.IO.Path;
 
 namespace Microsoft.Unity.VisualStudio.Editor
 {
-	internal class VisualStudioInstallation
+	internal interface IVisualStudioInstallation
+	{
+		string Path { get; }
+		bool SupportsAnalyzers { get; }
+		bool SupportsCSharp8 { get; }
+		string[] GetAnalyzers();
+		CodeEditor.Installation ToCodeEditorInstallation();
+	}
+
+	internal class VisualStudioInstallation : IVisualStudioInstallation
 	{
 		public string Name { get; set; }
 		public string Path { get; set; }

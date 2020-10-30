@@ -15,7 +15,10 @@ namespace Microsoft.Unity.VisualStudio.Editor
 {
 	internal static class Discovery
 	{
-		public static IEnumerable<VisualStudioInstallation> GetVisualStudioInstallations()
+		internal const string ManagedWorkload = "Microsoft.VisualStudio.Workload.ManagedGame";
+
+
+		public static IEnumerable<IVisualStudioInstallation> GetVisualStudioInstallations()
 		{
 			if (VisualStudioEditor.IsWindows)
 			{
@@ -45,7 +48,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return false;
 		}
 
-		public static bool TryDiscoverInstallation(string editorPath, out VisualStudioInstallation installation)
+		public static bool TryDiscoverInstallation(string editorPath, out IVisualStudioInstallation installation)
 		{
 			installation = null;
 
@@ -61,7 +64,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			// On Mac we use the .app folder, so we need to access to main assembly
 			if (VisualStudioEditor.IsOSX)
 				fvi = Path.Combine(editorPath, "Contents", "Resources", "lib", "monodevelop", "bin", "VisualStudio.exe");
-			
+
 			if (!File.Exists(fvi))
 				return false;
 
@@ -82,7 +85,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		}
 
 		#region VsWhere Json Schema
-		#pragma warning disable CS0649
+#pragma warning disable CS0649
 		[Serializable]
 		internal class VsWhereResult
 		{
@@ -95,7 +98,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 			public IEnumerable<VisualStudioInstallation> ToVisualStudioInstallations()
 			{
-				foreach(var entry in entries)
+				foreach (var entry in entries)
 				{
 					yield return new VisualStudioInstallation()
 					{
@@ -123,7 +126,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			public string productDisplayVersion; // non parseable like "16.3.0 Preview 3.0"
 			public string buildVersion;
 		}
-		#pragma warning restore CS3021
+#pragma warning restore CS3021
 		#endregion
 
 		private static IEnumerable<VisualStudioInstallation> QueryVsWhere()
