@@ -11,9 +11,6 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 	{
 		private readonly BinaryReader _reader;
 
-		// Max UDP packet size is 65507
-		private const int MaxStringLength = 65000;
-
 		public Deserializer(byte[] buffer)
 		{
 			_reader = new BinaryReader(new MemoryStream(buffer));
@@ -27,7 +24,7 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 		public string ReadString()
 		{
 			var length = ReadInt32();
-			return length > 0 && length <= MaxStringLength
+			return length > 0
 				? Encoding.UTF8.GetString(_reader.ReadBytes(length))
 				: "";
 		}

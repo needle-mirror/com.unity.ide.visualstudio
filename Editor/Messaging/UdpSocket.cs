@@ -10,6 +10,8 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 {
 	internal class UdpSocket : Socket
 	{
+		// Maximum UDP payload is 65507 bytes.
+		// TCP mode will be used when the payload is bigger than this BufferSize
 		public const int BufferSize = 1024 * 8;
 
 		internal UdpSocket()

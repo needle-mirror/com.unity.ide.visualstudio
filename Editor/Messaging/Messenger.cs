@@ -71,7 +71,23 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 				if (message != null)
 				{
 					message.Origin = (IPEndPoint)endPoint;
-					ReceiveMessage?.Invoke(this, new MessageEventArgs(message));
+
+					int port;
+					int bufferSize;
+					if (IsValidTcpMessage(message, out port, out bufferSize))
+					{
+						// switch to TCP mode to handle big messages
+						TcpClient.Queue(message.Origin.Address, port, bufferSize, buffer =>
+						{
+							var originalMessage = DeserializeMessage(buffer);
+							originalMessage.Origin = message.Origin;
+							ReceiveMessage?.Invoke(this, new MessageEventArgs(originalMessage));
+						});
+					}
+					else
+					{
+						ReceiveMessage?.Invoke(this, new MessageEventArgs(message));
+					}
 				}
 			}
 			catch (ObjectDisposedException)
@@ -84,6 +100,22 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 			}
 
 			BeginReceiveMessage();
+		}
+
+		private static bool IsValidTcpMessage(Message message, out int port, out int bufferSize)
+		{
+			port = 0;
+			bufferSize = 0;
+			if (message.Value == null)
+				return false;
+			if (message.Type != MessageType.Tcp)
+				return false;
+			var parts = message.Value.Split(':');
+			if (parts.Length != 2)
+				return false;
+			if (!int.TryParse(parts[0], out port))
+				return false;
+			return int.TryParse(parts[1], out bufferSize);
 		}
 
 		private void RaiseMessagerException(Exception e)
@@ -107,6 +139,18 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 				{
 					if (_disposed)
 						return;
+
+					if (buffer.Length >= UdpSocket.BufferSize)
+					{
+						// switch to TCP mode to handle big messages
+						var port = TcpListener.Queue(buffer);
+						if (port > 0)
+						{
+							// success, replace original message with "switch to tcp" marker + port information + buffer length
+							message = MessageFor(MessageType.Tcp, string.Concat(port, ':', buffer.Length));
+							buffer = SerializeMessage(message);
+						}
+					}
 
 					_socket.BeginSendTo(buffer, 0, Math.Min(buffer.Length, UdpSocket.BufferSize), SocketFlags.None, target, SendMessageCallback, null);
 				}

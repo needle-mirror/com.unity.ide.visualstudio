@@ -30,5 +30,19 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 		UpdatePackage,
 
 		ProjectPath,
+
+		// This message is a technical one for big messages, not intended to be used directly
+		Tcp,
+
+		RunStarted,
+		RunFinished,
+		TestStarted,
+		TestFinished,
+		TestListRetrieved,
+
+		RetrieveTestList,
+		ExecuteTests,
+
+		ShowUsage
 	}
 }

@@ -11,6 +11,11 @@ using UnityEditor;
 using UnityEngine;
 using Unity.CodeEditor;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Unity.VisualStudio.EditorTests")]
+[assembly: InternalsVisibleTo("Unity.VisualStudio.Standalone.EditorTests")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 
 namespace Microsoft.Unity.VisualStudio.Editor
 {

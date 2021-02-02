@@ -57,7 +57,17 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return path.Replace(WinSeparator, UnixSeparator);
 		}
 
-		internal static bool IsFileInProjectDirectory(string fileName)
+		internal static bool IsFileInProjectRootDirectory(string fileName)
+		{
+			var relative = MakeRelativeToProjectPath(fileName);
+			if (string.IsNullOrEmpty(relative))
+				return false;
+
+			return relative == Path.GetFileName(relative);
+		}
+		
+		// returns null if outside of the project scope
+		internal static string MakeRelativeToProjectPath(string fileName)
 		{
 			var basePath = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
 			fileName = Normalize(fileName);
@@ -65,7 +75,13 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (!Path.IsPathRooted(fileName))
 				fileName = Path.Combine(basePath, fileName);
 
-			return string.Equals(Path.GetDirectoryName(fileName), basePath, StringComparison.OrdinalIgnoreCase);
+			if (!fileName.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
+				return null;
+
+			return fileName
+				.Substring(basePath.Length)
+				.Trim(Path.DirectorySeparatorChar);
 		}
+
 	}
 }

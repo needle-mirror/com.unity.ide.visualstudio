@@ -5,9 +5,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Unity.VisualStudio.Editor.Messaging;
+using Microsoft.Unity.VisualStudio.Editor.Testing;
 using UnityEditor;
 using UnityEngine;
 using MessageType = Microsoft.Unity.VisualStudio.Editor.Messaging.MessageType;
@@ -17,10 +19,18 @@ namespace Microsoft.Unity.VisualStudio.Editor
 	[InitializeOnLoad]
 	internal class VisualStudioIntegration
 	{
+		class Client
+		{
+			public IPEndPoint EndPoint { get; set; }
+			public DateTime LastMessage { get; set; }
+		}
+
 		private static Messager _messager;
 
-		private static readonly Queue<Message> Incoming = new Queue<Message>();
-		private static readonly object IncomingLock = new object();
+		private static readonly Queue<Message> _incoming = new Queue<Message>();
+		private static readonly Dictionary<IPEndPoint, Client> _clients = new Dictionary<IPEndPoint, Client>();
+		private static readonly object _incomingLock = new object();
+		private static readonly object _clientsLock = new object();
 
 		static VisualStudioIntegration()
 		{
@@ -90,25 +100,39 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private static void OnUpdate()
 		{
-			lock (IncomingLock)
+			lock (_incomingLock)
 			{
-				while (Incoming.Count > 0)
+				while (_incoming.Count > 0)
 				{
-					ProcessIncoming(Incoming.Dequeue());
+					ProcessIncoming(_incoming.Dequeue());
+				}
+			}
+
+			lock (_clientsLock)
+			{
+				foreach (var client in _clients.Values.ToArray())
+				{
+					if (DateTime.Now.Subtract(client.LastMessage) > TimeSpan.FromMilliseconds(4000))
+						_clients.Remove(client.EndPoint);
 				}
 			}
 		}
 
 		private static void AddMessage(Message message)
 		{
-			lock (IncomingLock)
+			lock (_incomingLock)
 			{
-				Incoming.Enqueue(message);
+				_incoming.Enqueue(message);
 			}
 		}
 
 		private static void ProcessIncoming(Message message)
 		{
+			lock (_clientsLock)
+			{
+				CheckClient(message);
+			}
+
 			switch (message.Type)
 			{
 				case MessageType.Ping:
@@ -142,6 +166,36 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				case MessageType.ProjectPath:
 					Answer(message, MessageType.ProjectPath, Path.GetFullPath(Path.Combine(Application.dataPath, "..")));
 					break;
+				case MessageType.ExecuteTests:
+					TestRunnerApiListener.ExecuteTests(message.Value);
+					break;
+				case MessageType.RetrieveTestList:
+					TestRunnerApiListener.RetrieveTestList(message.Value);
+					break;
+				case MessageType.ShowUsage:
+					UsageUtility.ShowUsage(message.Value);
+					break;
+			}
+		}
+
+		private static void CheckClient(Message message)
+		{
+			Client client;
+			var endPoint = message.Origin;
+
+			if (!_clients.TryGetValue(endPoint, out client))
+			{
+				client = new Client
+				{
+					EndPoint = endPoint,
+					LastMessage = DateTime.Now
+				};
+
+				_clients.Add(endPoint, client);
+			}
+			else
+			{
+				client.LastMessage = DateTime.Now;
 			}
 		}
 
@@ -163,6 +217,11 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private static void OnMessage(Message message)
 		{
 			AddMessage(message);
+		}
+
+		private static void Answer(Client client, MessageType answerType, string answerValue)
+		{
+			Answer(client.EndPoint, answerType, answerValue);
 		}
 
 		private static void Answer(Message message, MessageType answerType, string answerValue = "")
@@ -188,6 +247,17 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			_messager.ReceiveMessage -= ReceiveMessage;
 			_messager.Dispose();
 			_messager = null;
+		}
+
+		internal static void BroadcastMessage(MessageType type, string value)
+		{
+			lock (_clientsLock)
+			{
+				foreach (var client in _clients.Values.ToArray())
+				{
+					Answer(client, type, value);
+				}
+			}
 		}
 	}
 }
