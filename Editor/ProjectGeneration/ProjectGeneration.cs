@@ -104,10 +104,6 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		{
 			SetupProjectSupportedExtensions();
 
-			// See https://devblogs.microsoft.com/setup/configure-visual-studio-across-your-organization-with-vsconfig/
-			// We create a .vsconfig file to make sure our ManagedGame workload is installed
-			CreateVsConfigIfNotFound();
-
 			// Don't sync if we haven't synced before
 			if (HasSolutionBeenGenerated() && HasFilesBeenModified(affectedFiles, reimportedFiles))
 			{
@@ -161,6 +157,13 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			RefreshCurrentInstallation();
 
 			SetupProjectSupportedExtensions();
+
+			(m_AssemblyNameProvider as AssemblyNameProvider)?.ResetPackageInfoCache();
+
+			// See https://devblogs.microsoft.com/setup/configure-visual-studio-across-your-organization-with-vsconfig/
+			// We create a .vsconfig file to make sure our ManagedGame workload is installed
+			CreateVsConfigIfNotFound();
+
 			var externalCodeAlreadyGeneratedProjects = OnPreGeneratingCSProjectFiles();
 
 			if (!externalCodeAlreadyGeneratedProjects)
@@ -322,7 +325,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 						stringBuilders[assemblyName] = projectBuilder;
 					}
 
-					projectBuilder.Append("     <None Include=\"").Append(EscapedRelativePathFor(asset)).Append("\" />").Append(k_WindowsNewline);
+					projectBuilder.Append("    <None Include=\"").Append(EscapedRelativePathFor(asset)).Append("\" />").Append(k_WindowsNewline);
 				}
 			}
 
@@ -367,6 +370,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		{
 			return TypeCache
 				.GetTypesDerivedFrom<AssetPostprocessor>()
+				.Where(t => t.Assembly.GetName().Name != "SyntaxTree.VisualStudio.Unity.Bridge") // never call into the bridge if loaded with the package
 				.Select(t => t.GetMethod(name, SR.BindingFlags.Public | SR.BindingFlags.NonPublic | SR.BindingFlags.Static))
 				.Where(m => m != null);
 		}
@@ -466,11 +470,18 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			}
 			projectBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
 
-			projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
-
 			// Append additional non-script files that should be included in project generation.
 			if (allAssetsProjectParts.TryGetValue(assembly.name, out var additionalAssetsForProject))
+			{
+				projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+
 				projectBuilder.Append(additionalAssetsForProject);
+
+				projectBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+
+			}
+
+			projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
 
 			var responseRefs = responseFilesData.SelectMany(x => x.FullPathReferences.Select(r => r));
 			var internalAssemblyReferences = assembly.assemblyReferences

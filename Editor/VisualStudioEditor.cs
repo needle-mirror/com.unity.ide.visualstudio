@@ -308,7 +308,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				StartInfo = new ProcessStartInfo
 				{
 					FileName = progpath,
-					Arguments = $"\"{CodeEditor.CurrentEditorInstallation}\" \"{absolutePath}\" {solution} {line}",
+					Arguments = $"\"{CodeEditor.CurrentEditorInstallation}\" {solution} \"{absolutePath}\" {line}",
 					CreateNoWindow = true,
 					UseShellExecute = false,
 					RedirectStandardOutput = true,

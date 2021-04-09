@@ -1,10 +1,28 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.8] - 2021-04-09
+
+Project generation:
+
+Improved generation performance (especially with DOTS enabled projects).
+Improved stability.
+Updated Analyzers lookup strategy.
+Fixed .vsconfig file not generated when using "regenerate all".
+
+Integration
+
+Improved automation plugins.
+
+Documentation
+
+Open sourced automation plugins.
+
+
 ## [2.0.7] - 2021-02-02
 
 Integration:
 
-Remove com.unity.nuget.newtonsoft-json dependency in favor of the built-in JsonUtility for the VS Test Runner.
+- Remove com.unity.nuget.newtonsoft-json dependency in favor of the built-in JsonUtility for the VS Test Runner.
 
 
 ## [2.0.6] - 2021-01-20
