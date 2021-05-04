@@ -148,7 +148,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private void RefreshCurrentInstallation()
 		{
 			var editor = CodeEditor.CurrentEditor as VisualStudioEditor;
-			editor?.TryGetVisualStudioInstallationForPath(CodeEditor.CurrentEditorInstallation, out m_CurrentInstallation);
+			editor?.TryGetVisualStudioInstallationForPath(CodeEditor.CurrentEditorInstallation, searchInstallations: true, out m_CurrentInstallation);
 		}
 
 		public void Sync()
@@ -370,7 +370,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		{
 			return TypeCache
 				.GetTypesDerivedFrom<AssetPostprocessor>()
-				.Where(t => t.Assembly.GetName().Name != "SyntaxTree.VisualStudio.Unity.Bridge") // never call into the bridge if loaded with the package
+				.Where(t => t.Assembly.GetName().Name != KnownAssemblies.Bridge) // never call into the bridge if loaded with the package
 				.Select(t => t.GetMethod(name, SR.BindingFlags.Public | SR.BindingFlags.NonPublic | SR.BindingFlags.Static))
 				.Where(m => m != null);
 		}

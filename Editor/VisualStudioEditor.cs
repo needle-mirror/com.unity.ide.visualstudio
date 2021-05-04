@@ -7,11 +7,11 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using UnityEditor;
 using UnityEngine;
 using Unity.CodeEditor;
-using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Unity.VisualStudio.EditorTests")]
 [assembly: InternalsVisibleTo("Unity.VisualStudio.Standalone.EditorTests")]
@@ -22,41 +22,43 @@ namespace Microsoft.Unity.VisualStudio.Editor
 	[InitializeOnLoad]
 	public class VisualStudioEditor : IExternalCodeEditor
 	{
-		private static readonly IVisualStudioInstallation[] _installations;
-
 		internal static bool IsOSX => Application.platform == RuntimePlatform.OSXEditor;
 		internal static bool IsWindows => !IsOSX && Path.DirectorySeparatorChar == FileUtility.WinSeparator && Environment.NewLine == "\r\n";
 
-		CodeEditor.Installation[] IExternalCodeEditor.Installations => _installations
+		CodeEditor.Installation[] IExternalCodeEditor.Installations => _discoverInstallations.Result
 			.Select(i => i.ToCodeEditorInstallation())
 			.ToArray();
+
+		private static readonly AsyncOperation<IVisualStudioInstallation[]> _discoverInstallations;
 
 		private readonly IGenerator _generator = new ProjectGeneration();
 
 		static VisualStudioEditor()
 		{
+			if (IsWindows)
+				Discovery.FindVSWhere();
+
+			CodeEditor.Register(new VisualStudioEditor());
+
+			_discoverInstallations = AsyncOperation<IVisualStudioInstallation[]>.Run(DiscoverInstallations);
+		}
+
+		private static IVisualStudioInstallation[] DiscoverInstallations()
+		{
 			try
 			{
-				_installations = Discovery
+				return Discovery
 					.GetVisualStudioInstallations()
 					.ToArray();
 			}
 			catch (Exception ex)
 			{
 				UnityEngine.Debug.LogError($"Error detecting Visual Studio installations: {ex}");
-				_installations = Array.Empty<VisualStudioInstallation>();
-			}
-
-			CodeEditor.Register(new VisualStudioEditor());
-		}
-
-		internal static bool IsEnabled
-		{
-			get
-			{
-				return CodeEditor.CurrentEditor is VisualStudioEditor;
+				return Array.Empty<VisualStudioInstallation>();
 			}
 		}
+
+		internal static bool IsEnabled => CodeEditor.CurrentEditor is VisualStudioEditor;
 
 		public void CreateIfDoesntExist()
 		{
@@ -68,16 +70,19 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		{
 		}
 
-		internal virtual bool TryGetVisualStudioInstallationForPath(string editorPath, out IVisualStudioInstallation installation)
+		internal virtual bool TryGetVisualStudioInstallationForPath(string editorPath, bool searchInstallations, out IVisualStudioInstallation installation)
 		{
-			// lookup for well known installations
-			foreach (var candidate in _installations)
+			if (searchInstallations)
 			{
-				if (!string.Equals(Path.GetFullPath(editorPath), Path.GetFullPath(candidate.Path), StringComparison.OrdinalIgnoreCase))
-					continue;
+				// lookup for well known installations
+				foreach (var candidate in _discoverInstallations.Result)
+				{
+					if (!string.Equals(Path.GetFullPath(editorPath), Path.GetFullPath(candidate.Path), StringComparison.OrdinalIgnoreCase))
+						continue;
 
-				installation = candidate;
-				return true;
+					installation = candidate;
+					return true;
+				}
 			}
 
 			return Discovery.TryDiscoverInstallation(editorPath, out installation);
@@ -85,7 +90,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public virtual bool TryGetInstallationForPath(string editorPath, out CodeEditor.Installation installation)
 		{
-			var result = TryGetVisualStudioInstallationForPath(editorPath, out var vsi);
+			var result = TryGetVisualStudioInstallationForPath(editorPath, searchInstallations: false, out var vsi);
 			installation = vsi == null ? default : vsi.ToCodeEditorInstallation();
 			return result;
 		}

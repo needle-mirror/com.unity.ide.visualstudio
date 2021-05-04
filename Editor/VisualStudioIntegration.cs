@@ -11,6 +11,8 @@ using System.Net.Sockets;
 using Microsoft.Unity.VisualStudio.Editor.Messaging;
 using Microsoft.Unity.VisualStudio.Editor.Testing;
 using UnityEditor;
+using UnityEditor.PackageManager;
+using UnityEditor.PackageManager.Requests;
 using UnityEngine;
 using MessageType = Microsoft.Unity.VisualStudio.Editor.Messaging.MessageType;
 
@@ -32,10 +34,14 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private static readonly object _incomingLock = new object();
 		private static readonly object _clientsLock = new object();
 
+		private static ListRequest _listRequest;
+
 		static VisualStudioIntegration()
 		{
 			if (!VisualStudioEditor.IsEnabled)
 				return;
+
+			_listRequest = UnityEditor.PackageManager.Client.List();
 
 			RunOnceOnUpdate(() =>
 			{
@@ -59,6 +65,35 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			});
 
 			EditorApplication.update += OnUpdate;
+
+			CheckLegacyAssemblies();
+		}
+
+		private static void CheckLegacyAssemblies()
+		{
+			var checkList = new HashSet<string>(new[] { KnownAssemblies.UnityVS, KnownAssemblies.Messaging, KnownAssemblies.Bridge });
+
+			try
+			{
+				var assemblies = AppDomain
+					.CurrentDomain
+					.GetAssemblies()
+					.Where(a => checkList.Contains(a.GetName().Name));
+
+				foreach (var assembly in assemblies)
+				{
+					// for now we only want to warn against local assemblies, do not check externals.
+					var relativePath = FileUtility.MakeRelativeToProjectPath(assembly.Location);
+					if (relativePath == null)
+						continue;
+
+					Debug.LogWarning($"Project contains legacy assembly that could interfere with the Visual Studio Package. You should delete {relativePath}");
+				}
+			}
+			catch (Exception)
+			{
+				// abandon legacy check
+			}
 		}
 
 		private static void RunOnceOnUpdate(Action action)
@@ -98,8 +133,33 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			OnMessage(args.Message);
 		}
 
+		private static void HandleListRequestCompletion()
+		{
+			const string packageName = "com.unity.ide.visualstudio";
+
+			if (_listRequest.Status == StatusCode.Success)
+			{
+				var package = _listRequest.Result.FirstOrDefault(p => p.name == packageName);
+
+				if (package != null
+					&& Version.TryParse(package.version, out var packageVersion)
+					&& Version.TryParse(package.versions.latest, out var latestVersion)
+					&& packageVersion < latestVersion)
+				{
+					Debug.LogWarning($"Visual Studio Editor Package version {package.versions.latest} is available, we strongly encourage you to update from the Unity Package Manager for a better Visual Studio integration");
+				}
+			}
+
+			_listRequest = null;
+		}
+
 		private static void OnUpdate()
 		{
+			if (_listRequest != null && _listRequest.IsCompleted)
+			{
+				HandleListRequestCompletion();
+			}
+
 			lock (_incomingLock)
 			{
 				while (_incoming.Count > 0)

@@ -6,10 +6,10 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
-using UnityEngine;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Linq;
+using UnityEngine;
 
 namespace Microsoft.Unity.VisualStudio.Editor
 {
@@ -17,6 +17,14 @@ namespace Microsoft.Unity.VisualStudio.Editor
 	{
 		internal const string ManagedWorkload = "Microsoft.VisualStudio.Workload.ManagedGame";
 
+		internal static string _vsWherePath;
+
+		public static void FindVSWhere()
+		{
+			_vsWherePath = FileUtility
+				.FindPackageAssetFullPath("VSWhere a:packages", "vswhere.exe")
+				.FirstOrDefault();
+		}
 
 		public static IEnumerable<IVisualStudioInstallation> GetVisualStudioInstallations()
 		{
@@ -37,7 +45,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			}
 		}
 
-		private static bool IsCandidateToDiscovery(string path)
+		private static bool IsCandidateForDiscovery(string path)
 		{
 			if (File.Exists(path) && VisualStudioEditor.IsWindows && Regex.IsMatch(path, "devenv.exe$", RegexOptions.IgnoreCase))
 				return true;
@@ -55,7 +63,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (string.IsNullOrEmpty(editorPath))
 				return false;
 
-			if (!IsCandidateToDiscovery(editorPath))
+			if (!IsCandidateForDiscovery(editorPath))
 				return false;
 
 			// On windows we use the executable directly, so we can query extra information
@@ -131,9 +139,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private static IEnumerable<VisualStudioInstallation> QueryVsWhere()
 		{
-			var progpath = FileUtility
-				.FindPackageAssetFullPath("VSWhere a:packages", "vswhere.exe")
-				.FirstOrDefault();
+			var progpath = _vsWherePath;
 
 			if (string.IsNullOrWhiteSpace(progpath))
 				return Enumerable.Empty<VisualStudioInstallation>();
