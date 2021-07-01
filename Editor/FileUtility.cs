@@ -5,8 +5,6 @@
  *--------------------------------------------------------------------------------------------*/
 using System;
 using System.IO;
-using System.Linq;
-using UnityEditor;
 using UnityEngine;
 
 namespace Microsoft.Unity.VisualStudio.Editor
@@ -16,27 +14,19 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		public const char WinSeparator = '\\';
 		public const char UnixSeparator = '/';
 
-		// Safe for packages as we use packageInfo.resolvedPath, so this should work in library package cache as well
-		public static string[] FindPackageAssetFullPath(string assetfilter, string filefilter)
+		public static string GetPackageAssetFullPath(params string[] components)
 		{
-			return AssetDatabase.FindAssets(assetfilter)
-				.Select(AssetDatabase.GUIDToAssetPath)
-				.Where(assetPath => assetPath.Contains(filefilter))
-				.Select(asset =>
-				 {
-					 var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(asset);
-					 return Normalize(packageInfo.resolvedPath + asset.Substring(packageInfo.assetPath.Length));
-				 })
-				.ToArray();
+			// Unity has special IO handling of Packages and will resolve those path to the right package location
+			return Path.GetFullPath(Path.Combine("Packages", "com.unity.ide.visualstudio", Path.Combine(components)));
 		}
 
 		public static string GetAssetFullPath(string asset)
 		{
 			var basePath = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
-			return Path.GetFullPath(Path.Combine(basePath, Normalize(asset)));
+			return Path.GetFullPath(Path.Combine(basePath, NormalizePathSeparators(asset)));
 		}
 
-		public static string Normalize(string path)
+		public static string NormalizePathSeparators(this string path)
 		{
 			if (string.IsNullOrEmpty(path))
 				return path;
@@ -65,12 +55,18 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 			return relative == Path.GetFileName(relative);
 		}
+
+		public static string MakeAbsolutePath(this string path, string projectDirectory)
+		{
+			if (string.IsNullOrEmpty(path)) { return string.Empty; }
+			return Path.IsPathRooted(path) ? path : Path.Combine(projectDirectory, path);
+		}
 		
 		// returns null if outside of the project scope
 		internal static string MakeRelativeToProjectPath(string fileName)
 		{
 			var basePath = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
-			fileName = Normalize(fileName);
+			fileName = NormalizePathSeparators(fileName);
 
 			if (!Path.IsPathRooted(fileName))
 				fileName = Path.Combine(basePath, fileName);
@@ -82,6 +78,5 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				.Substring(basePath.Length)
 				.Trim(Path.DirectorySeparatorChar);
 		}
-
 	}
 }

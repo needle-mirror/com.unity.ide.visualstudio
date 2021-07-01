@@ -240,10 +240,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private static void CheckClient(Message message)
 		{
-			Client client;
 			var endPoint = message.Origin;
 
-			if (!_clients.TryGetValue(endPoint, out client))
+			if (!_clients.TryGetValue(endPoint, out var client))
 			{
 				client = new Client
 				{

@@ -10,6 +10,33 @@ namespace Microsoft.Unity.VisualStudio.Editor
 {
 	internal static class UnityInstallation
 	{
+		public static bool IsMainUnityEditorProcess
+		{
+			get
+			{
+#if UNITY_2020_2_OR_NEWER
+				if (UnityEditor.AssetDatabase.IsAssetImportWorkerProcess())
+					return false;
+#elif UNITY_2019_3_OR_NEWER
+				if (UnityEditor.Experimental.AssetDatabaseExperimental.IsAssetImportWorkerProcess())
+					return false;
+#endif
+
+#if UNITY_2021_1_OR_NEWER
+				if (UnityEditor.MPE.ProcessService.level == UnityEditor.MPE.ProcessLevel.Secondary)
+					return false;
+#elif UNITY_2020_2_OR_NEWER
+				if (UnityEditor.MPE.ProcessService.level == UnityEditor.MPE.ProcessLevel.Slave)
+					return false;
+#elif UNITY_2020_1_OR_NEWER
+				if (global::Unity.MPE.ProcessService.level == global::Unity.MPE.ProcessLevel.UMP_SLAVE)
+					return false;
+#endif
+
+				return true;
+			}
+		}
+
 		public static Version LatestLanguageVersionSupported(Assembly assembly)
 		{
 #if UNITY_2020_2_OR_NEWER

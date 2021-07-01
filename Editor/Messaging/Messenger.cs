@@ -17,11 +17,31 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 		private readonly object _disposeLock = new object();
 		private bool _disposed;
 
+#if UNITY_EDITOR_WIN
+		[System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+		private static extern bool SetHandleInformation(IntPtr hObject, HandleFlags dwMask, HandleFlags dwFlags);
+
+		[Flags]
+		private enum HandleFlags: uint
+		{
+			None = 0,
+			Inherit = 1,
+			ProtectFromClose = 2
+		}
+#endif
+
 		protected Messager(int port)
 		{
 			_socket = new UdpSocket();
 			_socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ExclusiveAddressUse, false);
 			_socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+
+#if UNITY_EDITOR_WIN
+			// Explicitely disable inheritance for our UDP socket handle 
+			// We found that Unity is creating a fork when importing new assets that can clone our socket
+			SetHandleInformation(_socket.Handle, HandleFlags.Inherit, HandleFlags.None);
+#endif
+
 			_socket.Bind(IPAddress.Any, port);
 
 			BeginReceiveMessage();
@@ -72,9 +92,7 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 				{
 					message.Origin = (IPEndPoint)endPoint;
 
-					int port;
-					int bufferSize;
-					if (IsValidTcpMessage(message, out port, out bufferSize))
+					if (IsValidTcpMessage(message, out var port, out var bufferSize))
 					{
 						// switch to TCP mode to handle big messages
 						TcpClient.Queue(message.Origin.Address, port, bufferSize, buffer =>

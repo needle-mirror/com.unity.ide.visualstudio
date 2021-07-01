@@ -64,7 +64,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			var scene = SceneManager.GetSceneByPath(scenePath.Replace(Path.DirectorySeparatorChar, '/'));
 			if (!scene.isLoaded)
 			{
-				var result = UnityEditor.EditorUtility.DisplayDialogComplex("Show Usage",
+				var result = EditorUtility.DisplayDialogComplex("Show Usage",
 						 $"Do you want to open \"{Path.GetFileName(scenePath)}\"?",
 						 "Open Scene",
 						 "Cancel",

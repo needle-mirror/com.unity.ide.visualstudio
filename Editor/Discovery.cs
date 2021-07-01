@@ -21,9 +21,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public static void FindVSWhere()
 		{
-			_vsWherePath = FileUtility
-				.FindPackageAssetFullPath("VSWhere a:packages", "vswhere.exe")
-				.FirstOrDefault();
+			_vsWherePath = FileUtility.GetPackageAssetFullPath("Editor", "VSWhere", "vswhere.exe");
 		}
 
 		public static IEnumerable<IVisualStudioInstallation> GetVisualStudioInstallations()
@@ -71,7 +69,12 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 			// On Mac we use the .app folder, so we need to access to main assembly
 			if (VisualStudioEditor.IsOSX)
-				fvi = Path.Combine(editorPath, "Contents", "Resources", "lib", "monodevelop", "bin", "VisualStudio.exe");
+			{
+				fvi = Path.Combine(editorPath, "Contents/Resources/lib/monodevelop/bin/VisualStudio.exe");
+
+				if (!File.Exists(fvi))
+					fvi = Path.Combine(editorPath, "Contents/MonoBundle/VisualStudio.exe");
+			}
 
 			if (!File.Exists(fvi))
 				return false;

@@ -8,11 +8,14 @@ namespace Microsoft.Unity.VisualStudio.Editor.Testing
 	[InitializeOnLoad]
 	internal class TestRunnerApiListener
 	{
-		private static TestRunnerApi _testRunnerApi;
-		private static TestRunnerCallbacks _testRunnerCallbacks;
+		private static readonly TestRunnerApi _testRunnerApi;
+		private static readonly TestRunnerCallbacks _testRunnerCallbacks;
 
 		static TestRunnerApiListener()
 		{
+			if (!VisualStudioEditor.IsEnabled)
+				return;
+
 			_testRunnerApi = ScriptableObject.CreateInstance<TestRunnerApi>();
 			_testRunnerCallbacks = new TestRunnerCallbacks();
 
@@ -26,7 +29,7 @@ namespace Microsoft.Unity.VisualStudio.Editor.Testing
 
 		private static void RetrieveTestList(TestMode mode)
 		{
-			_testRunnerApi.RetrieveTestList(mode, (ta) => _testRunnerCallbacks.TestListRetrieved(mode, ta));
+			_testRunnerApi?.RetrieveTestList(mode, ta => _testRunnerCallbacks.TestListRetrieved(mode, ta));
 		}
 
 		public static void ExecuteTests(string command)
@@ -41,12 +44,12 @@ namespace Microsoft.Unity.VisualStudio.Editor.Testing
 			var testMode = (TestMode)Enum.Parse(typeof(TestMode), command.Substring(0, index));
 			var filter = command.Substring(index + 1);
 
-			ExecuteTests(new Filter() { testMode = testMode, testNames = new string[] { filter } });
+			ExecuteTests(new Filter { testMode = testMode, testNames = new [] { filter } });
 		}
 
 		private static void ExecuteTests(Filter filter)
 		{
-			_testRunnerApi.Execute(new ExecutionSettings(filter));
+			_testRunnerApi?.Execute(new ExecutionSettings(filter));
 		}
 	}
 }

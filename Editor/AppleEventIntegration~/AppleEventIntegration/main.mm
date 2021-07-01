@@ -118,12 +118,7 @@ static BOOL ApplicationSupportsQueryOpenedSolution(NSString* appPath)
         return NO;
 
     NSString* version = (NSString*)versionValue;
-    NSArray* components = [version componentsSeparatedByString:@"."];
-    if (!components || components.count < 2)
-        return NO;
-
-    return [components[0] integerValue] >= 8
-        && [components[1] integerValue] >= 6;
+    return [version compare:@"8.6" options:NSNumericSearch] != NSOrderedAscending;
 }
 
 static NSArray<NSRunningApplication*>* QueryRunningInstances(NSString *appPath)

@@ -13,9 +13,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Unity.CodeEditor;
+using Unity.Profiling;
 using UnityEditor;
 using UnityEditor.Compilation;
-using UnityEditorInternal;
 using UnityEngine;
 
 namespace Microsoft.Unity.VisualStudio.Editor
@@ -45,19 +45,15 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		const string k_WindowsNewline = "\r\n";
 
-		string m_SolutionProjectEntryTemplate = @"Project(""{{{0}}}"") = ""{1}"", ""{2}"", ""{{{3}}}""{4}EndProject";
+		const string m_SolutionProjectEntryTemplate = @"Project(""{{{0}}}"") = ""{1}"", ""{2}"", ""{{{3}}}""{4}EndProject";
 
-		string m_SolutionProjectConfigurationTemplate = string.Join("\r\n",
+		readonly string m_SolutionProjectConfigurationTemplate = string.Join(k_WindowsNewline,
 			@"        {{{0}}}.Debug|Any CPU.ActiveCfg = Debug|Any CPU",
 			@"        {{{0}}}.Debug|Any CPU.Build.0 = Debug|Any CPU",
 			@"        {{{0}}}.Release|Any CPU.ActiveCfg = Release|Any CPU",
 			@"        {{{0}}}.Release|Any CPU.Build.0 = Release|Any CPU").Replace("    ", "\t");
 
 		static readonly string[] k_ReimportSyncExtensions = { ".dll", ".asmdef" };
-
-		static readonly Regex k_ScriptReferenceExpression = new Regex(
-			@"^Library.ScriptAssemblies.(?<dllname>(?<project>.*)\.dll$)",
-			RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
 		string[] m_ProjectSupportedExtensions = Array.Empty<string>();
 		string[] m_BuiltinSupportedExtensions = Array.Empty<string>();
@@ -102,15 +98,50 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		/// </param>
 		public bool SyncIfNeeded(IEnumerable<string> affectedFiles, IEnumerable<string> reimportedFiles)
 		{
-			SetupProjectSupportedExtensions();
-
-			// Don't sync if we haven't synced before
-			if (HasSolutionBeenGenerated() && HasFilesBeenModified(affectedFiles, reimportedFiles))
+			using (solutionSyncMarker.Auto())
 			{
-				Sync();
+				SetupProjectSupportedExtensions();
+
+				// See https://devblogs.microsoft.com/setup/configure-visual-studio-across-your-organization-with-vsconfig/
+				// We create a .vsconfig file to make sure our ManagedGame workload is installed
+				CreateVsConfigIfNotFound();
+
+				// Don't sync if we haven't synced before
+				var affected = affectedFiles as ICollection<string> ?? affectedFiles.ToArray();
+				var reimported = reimportedFiles as ICollection<string> ?? reimportedFiles.ToArray();
+				if (!HasFilesBeenModified(affected, reimported))
+				{
+					return false;
+				}
+
+				var assemblies = m_AssemblyNameProvider.GetAssemblies(ShouldFileBePartOfSolution);
+				var allProjectAssemblies = RelevantAssembliesForMode(assemblies).ToList();
+				SyncSolution(allProjectAssemblies);
+
+				var allAssetProjectParts = GenerateAllAssetProjectParts();
+
+				var affectedNames = affected
+					.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset))
+					.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name =>
+						name.Split(new[] {".dll"}, StringSplitOptions.RemoveEmptyEntries)[0]);
+				var reimportedNames = reimported
+					.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset))
+					.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name =>
+						name.Split(new[] {".dll"}, StringSplitOptions.RemoveEmptyEntries)[0]);
+				var affectedAndReimported = new HashSet<string>(affectedNames.Concat(reimportedNames));
+
+				foreach (var assembly in allProjectAssemblies)
+				{
+					if (!affectedAndReimported.Contains(assembly.name))
+						continue;
+
+					SyncProject(assembly,
+						allAssetProjectParts,
+						responseFilesData: ParseResponseFileData(assembly).ToArray());
+				}
+
 				return true;
 			}
-			return false;
 		}
 
 		private void CreateVsConfigIfNotFound()
@@ -123,10 +154,10 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 				var content = $@"{{
   ""version"": ""1.0"",
-  ""components"": [ 
+  ""components"": [
     ""{Discovery.ManagedWorkload}""
   ]
-}} 
+}}
 ";
 				m_FileIOProvider.WriteAllText(vsConfigFile, content);
 			}
@@ -151,6 +182,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			editor?.TryGetVisualStudioInstallationForPath(CodeEditor.CurrentEditorInstallation, searchInstallations: true, out m_CurrentInstallation);
 		}
 
+		static ProfilerMarker solutionSyncMarker = new ProfilerMarker("SolutionSynchronizerSync");
+
 		public void Sync()
 		{
 			// We need the exact VS version/capabilities to tweak project generation (analyzers/langversion)
@@ -170,6 +203,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			{
 				GenerateAndWriteSolutionAndProjects();
 			}
+
 			OnGeneratedCSProjectFiles();
 		}
 
@@ -246,27 +280,19 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		{
 			// Only synchronize assemblies that have associated source files and ones that we actually want in the project.
 			// This also filters out DLLs coming from .asmdef files in packages.
-			var assemblies = m_AssemblyNameProvider.GetAssemblies(ShouldFileBePartOfSolution);
+			var assemblies = m_AssemblyNameProvider.GetAssemblies(ShouldFileBePartOfSolution).ToList();
 
 			var allAssetProjectParts = GenerateAllAssetProjectParts();
 
-			var assemblyList = assemblies.ToList();
+			SyncSolution(assemblies);
 
-			SyncSolution(assemblyList);
+			var allProjectAssemblies = RelevantAssembliesForMode(assemblies);
 
-			var allProjectAssemblies = RelevantAssembliesForMode(assemblyList).ToList();
-
-			foreach (Assembly assembly in allProjectAssemblies)
+			foreach (var assembly in allProjectAssemblies)
 			{
 				SyncProject(assembly,
 					allAssetProjectParts,
-					responseFilesData: ParseResponseFileData(assembly),
-					allProjectAssemblies,
-#if UNITY_2020_2_OR_NEWER
-		            assembly.compilerOptions.RoslynAnalyzerDllPaths);
-#else
-					Array.Empty<string>());
-#endif
+					responseFilesData: ParseResponseFileData(assembly).ToArray());
 			}
 		}
 
@@ -310,7 +336,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				if (IsSupportedFile(asset) && ScriptingLanguage.None == ScriptingLanguageFor(asset))
 				{
 					// Find assembly the asset belongs to by adding script extension and using compilation pipeline.
-					var assemblyName = m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset + ".cs");
+					var assemblyName = m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset);
 
 					if (string.IsNullOrEmpty(assemblyName))
 					{
@@ -340,13 +366,11 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private void SyncProject(
 			Assembly assembly,
 			Dictionary<string, string> allAssetsProjectParts,
-			IEnumerable<ResponseFileData> responseFilesData,
-			List<Assembly> allProjectAssemblies,
-			string[] roslynAnalyzerDllPaths)
+			ResponseFileData[] responseFilesData)
 		{
 			SyncProjectFileIfNotChanged(
 				ProjectFile(assembly),
-				ProjectText(assembly, allAssetsProjectParts, responseFilesData, allProjectAssemblies, roslynAnalyzerDllPaths));
+				ProjectText(assembly, allAssetsProjectParts, responseFilesData));
 		}
 
 		private void SyncProjectFileIfNotChanged(string path, string newContents)
@@ -444,11 +468,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private string ProjectText(Assembly assembly,
 			Dictionary<string, string> allAssetsProjectParts,
-			IEnumerable<ResponseFileData> responseFilesData,
-			List<Assembly> allProjectAssemblies,
-			string[] roslynAnalyzerDllPaths)
+			ResponseFileData[] responseFilesData)
 		{
-			var projectBuilder = new StringBuilder(ProjectHeader(assembly, responseFilesData, roslynAnalyzerDllPaths));
+			var projectBuilder = new StringBuilder(ProjectHeader(assembly, responseFilesData));
 			var references = new List<string>();
 
 			projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
@@ -485,12 +507,12 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 			var responseRefs = responseFilesData.SelectMany(x => x.FullPathReferences.Select(r => r));
 			var internalAssemblyReferences = assembly.assemblyReferences
-			  .Where(i => !i.sourceFiles.Any(ShouldFileBePartOfSolution)).Select(i => i.outputPath);
+				.Where(i => !i.sourceFiles.Any(ShouldFileBePartOfSolution)).Select(i => i.outputPath);
 			var allReferences =
-			  assembly.compiledAssemblyReferences
-				.Union(responseRefs)
-				.Union(references)
-				.Union(internalAssemblyReferences);
+				assembly.compiledAssemblyReferences
+					.Union(responseRefs)
+					.Union(references)
+					.Union(internalAssemblyReferences);
 
 			foreach (var reference in allReferences)
 			{
@@ -503,7 +525,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (0 < assembly.assemblyReferences.Length)
 			{
 				projectBuilder.Append("  <ItemGroup>").Append(k_WindowsNewline);
-				foreach (Assembly reference in assembly.assemblyReferences.Where(i => i.sourceFiles.Any(ShouldFileBePartOfSolution)))
+				foreach (var reference in assembly.assemblyReferences.Where(i => i.sourceFiles.Any(ShouldFileBePartOfSolution)))
 				{
 					projectBuilder.Append("    <ProjectReference Include=\"").Append(reference.name).Append(GetProjectExtension()).Append("\">").Append(k_WindowsNewline);
 					projectBuilder.Append("      <Project>{").Append(ProjectGuid(reference)).Append("}</Project>").Append(k_WindowsNewline);
@@ -514,7 +536,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				projectBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
 			}
 
-			projectBuilder.Append(ProjectFooter());
+			projectBuilder.Append(GetProjectFooter());
 			return projectBuilder.ToString();
 		}
 
@@ -548,29 +570,20 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		}
 
 		private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;" + (VisualStudioEditor.IsWindows ? "" : "|:"));
+
 		public string SolutionFile()
 		{
-			return Path.Combine(FileUtility.Normalize(ProjectDirectory), $"{InvalidCharactersRegexPattern.Replace(m_ProjectName, "_")}.sln");
+			return Path.Combine(ProjectDirectory.NormalizePathSeparators(), $"{InvalidCharactersRegexPattern.Replace(m_ProjectName, "_")}.sln");
 		}
 
 		internal string VsConfigFile()
 		{
-			return Path.Combine(FileUtility.Normalize(ProjectDirectory), ".vsconfig");
+			return Path.Combine(ProjectDirectory.NormalizePathSeparators(), ".vsconfig");
 		}
 
-		private string ProjectHeader(
-			Assembly assembly,
-			IEnumerable<ResponseFileData> responseFilesData,
-			string[] roslynAnalyzerDllPaths
-		)
+		internal string GetLangVersion(Assembly assembly)
 		{
-			var toolsVersion = "4.0";
-			var productVersion = "10.0.20506";
-			const string baseDirectory = ".";
-
-			var targetFrameworkVersion = "v4.7.1";
 			var targetLanguageVersion = "latest"; // danger: latest is not the same absolute value depending on the VS version.
-
 			if (m_CurrentInstallation != null)
 			{
 				var vsLanguageSupport = m_CurrentInstallation.LatestLanguageVersionSupported;
@@ -580,43 +593,48 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				targetLanguageVersion = (vsLanguageSupport <= unityLanguageSupport ? vsLanguageSupport : unityLanguageSupport).ToString(2); // (major, minor) only
 			}
 
+			return targetLanguageVersion;
+		}
+
+		private string ProjectHeader(
+			Assembly assembly,
+			ResponseFileData[] responseFilesData
+		)
+		{
 			var projectType = ProjectTypeOf(assembly.name);
+			string rulesetPath = null;
+			var analyzers = Array.Empty<string>();
 
-			var arguments = new object[]
+			if (m_CurrentInstallation != null && m_CurrentInstallation.SupportsAnalyzers)
 			{
-				toolsVersion,
-				productVersion,
-				ProjectGuid(assembly),
-				XmlFilename(FileUtility.Normalize(InternalEditorUtility.GetEngineAssemblyPath())),
-				XmlFilename(FileUtility.Normalize(InternalEditorUtility.GetEditorAssemblyPath())),
-				string.Join(";", assembly.defines.Concat(responseFilesData.SelectMany(x => x.Defines)).Distinct().ToArray()),
-				MSBuildNamespaceUri,
-				assembly.name,
-				assembly.outputPath,
-				GetRootNamespace(assembly),
-				targetFrameworkVersion,
-				targetLanguageVersion,
-				baseDirectory,
-				assembly.compilerOptions.AllowUnsafeCode | responseFilesData.Any(x => x.Unsafe),
-                // flavoring
-                projectType + ":" + (int)projectType,
-				EditorUserBuildSettings.activeBuildTarget + ":" + (int)EditorUserBuildSettings.activeBuildTarget,
-				Application.unityVersion,
-				VisualStudioIntegration.PackageVersion()
-			};
-
-			try
-			{
+				analyzers = m_CurrentInstallation.GetAnalyzers();
 #if UNITY_2020_2_OR_NEWER
-                return string.Format(GetProjectHeaderTemplate(roslynAnalyzerDllPaths, assembly.compilerOptions.RoslynAnalyzerRulesetPath), arguments);
-#else
-				return string.Format(GetProjectHeaderTemplate(Array.Empty<string>(), null), arguments);
+				analyzers = analyzers != null ? analyzers.Concat(assembly.compilerOptions.RoslynAnalyzerDllPaths).ToArray() : assembly.compilerOptions.RoslynAnalyzerDllPaths;
+				rulesetPath = assembly.compilerOptions.RoslynAnalyzerRulesetPath;
 #endif
 			}
-			catch (Exception)
+
+			var projectProperties = new ProjectProperties()
 			{
-				throw new NotSupportedException("Failed creating c# project because the c# project header did not have the correct amount of arguments, which is " + arguments.Length);
-			}
+				ProjectGuid = ProjectGuid(assembly),
+				LangVersion = GetLangVersion(assembly),
+				AssemblyName = assembly.name,
+				RootNamespace = GetRootNamespace(assembly),
+				OutputPath = assembly.outputPath,
+				// Analyzers
+				Analyzers = analyzers,
+				RulesetPath = rulesetPath,
+				// RSP alterable
+				Defines = assembly.defines.Concat(responseFilesData.SelectMany(x => x.Defines)).Distinct().ToArray(),
+				Unsafe = assembly.compilerOptions.AllowUnsafeCode | responseFilesData.Any(x => x.Unsafe),
+				// VSTU Flavoring
+				FlavoringProjectType = projectType + ":" + (int)projectType,
+				FlavoringBuildTarget = EditorUserBuildSettings.activeBuildTarget + ":" + (int)EditorUserBuildSettings.activeBuildTarget,
+				FlavoringUnityVersion = Application.unityVersion,
+				FlavoringPackageVersion = VisualStudioIntegration.PackageVersion(),
+			};
+
+			return GetProjectHeader(projectProperties);
 		}
 
 		private enum ProjectType
@@ -642,9 +660,123 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return ProjectType.Game;
 		}
 
+		private string GetProjectHeader(ProjectProperties properties)
+		{
+			var header = new[]
+			{
+				$@"<?xml version=""1.0"" encoding=""utf-8""?>",
+				$@"<Project ToolsVersion=""4.0"" DefaultTargets=""Build"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"">",
+				$@"  <PropertyGroup>",
+				$@"    <LangVersion>{properties.LangVersion}</LangVersion>",
+				$@"  </PropertyGroup>",
+				$@"  <PropertyGroup>",
+				$@"    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>",
+				$@"    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>",
+				$@"    <ProductVersion>10.0.20506</ProductVersion>",
+				$@"    <SchemaVersion>2.0</SchemaVersion>",
+				$@"    <RootNamespace>{properties.RootNamespace}</RootNamespace>",
+				$@"    <ProjectGuid>{{{properties.ProjectGuid}}}</ProjectGuid>",
+				$@"    <OutputType>Library</OutputType>",
+				$@"    <AppDesignerFolder>Properties</AppDesignerFolder>",
+				$@"    <AssemblyName>{properties.AssemblyName}</AssemblyName>",
+				$@"    <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>",
+				$@"    <FileAlignment>512</FileAlignment>",
+				$@"    <BaseDirectory>.</BaseDirectory>",
+				$@"  </PropertyGroup>",
+				$@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">",
+				$@"    <DebugSymbols>true</DebugSymbols>",
+				$@"    <DebugType>full</DebugType>",
+				$@"    <Optimize>false</Optimize>",
+				$@"    <OutputPath>{properties.OutputPath}</OutputPath>",
+				$@"    <DefineConstants>{string.Join(";", properties.Defines)}</DefineConstants>",
+				$@"    <ErrorReport>prompt</ErrorReport>",
+				$@"    <WarningLevel>4</WarningLevel>",
+				$@"    <NoWarn>0169</NoWarn>",
+				$@"    <AllowUnsafeBlocks>{properties.Unsafe}</AllowUnsafeBlocks>",
+				$@"  </PropertyGroup>",
+				$@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">",
+				$@"    <DebugType>pdbonly</DebugType>",
+				$@"    <Optimize>true</Optimize>",
+				$@"    <OutputPath>Temp\bin\Release\</OutputPath>",
+				$@"    <ErrorReport>prompt</ErrorReport>",
+				$@"    <WarningLevel>4</WarningLevel>",
+				$@"    <NoWarn>0169</NoWarn>",
+				$@"    <AllowUnsafeBlocks>{properties.Unsafe}</AllowUnsafeBlocks>",
+				$@"  </PropertyGroup>"
+			};
+
+			var forceExplicitReferences = new[]
+			{
+				$@"  <PropertyGroup>",
+				$@"    <NoConfig>true</NoConfig>",
+				$@"    <NoStdLib>true</NoStdLib>",
+				$@"    <AddAdditionalExplicitAssemblyReferences>false</AddAdditionalExplicitAssemblyReferences>",
+				$@"    <ImplicitlyExpandNETStandardFacades>false</ImplicitlyExpandNETStandardFacades>",
+				$@"    <ImplicitlyExpandDesignTimeFacades>false</ImplicitlyExpandDesignTimeFacades>",
+				$@"  </PropertyGroup>"
+			};
+
+			var flavoring = new[]
+			{
+				$@"  <PropertyGroup>",
+				$@"    <ProjectTypeGuids>{{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1}};{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}</ProjectTypeGuids>",
+				$@"    <UnityProjectGenerator>Package</UnityProjectGenerator>",
+				$@"    <UnityProjectGeneratorVersion>{properties.FlavoringPackageVersion}</UnityProjectGeneratorVersion>",
+				$@"    <UnityProjectType>{properties.FlavoringProjectType}</UnityProjectType>",
+				$@"    <UnityBuildTarget>{properties.FlavoringBuildTarget}</UnityBuildTarget>",
+				$@"    <UnityVersion>{properties.FlavoringUnityVersion}</UnityVersion>",
+				$@"  </PropertyGroup>"
+			};
+
+			var footer = new[]
+			{
+				@""
+			};
+
+			var lines = header
+				.Concat(forceExplicitReferences)
+				.Concat(flavoring)
+				.ToList();
+
+			if (!string.IsNullOrEmpty(properties.RulesetPath))
+			{
+				lines.Add(@"  <PropertyGroup>");
+				lines.Add($"    <CodeAnalysisRuleSet>{properties.RulesetPath.MakeAbsolutePath(ProjectDirectory).NormalizePathSeparators()}</CodeAnalysisRuleSet>");
+				lines.Add(@"  </PropertyGroup>");
+			}
+
+			if (properties.Analyzers.Any())
+			{
+				lines.Add(@"  <ItemGroup>");
+				foreach (var analyzer in properties.Analyzers)
+				{
+					lines.Add($@"    <Analyzer Include=""{analyzer.MakeAbsolutePath(ProjectDirectory).NormalizePathSeparators()}"" />");
+				}
+				lines.Add(@"  </ItemGroup>");
+			}
+
+			return string.Join(k_WindowsNewline, lines.Concat(footer));
+		}
+
+		private static string GetProjectFooter()
+		{
+			return string.Join(k_WindowsNewline,
+			@"  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />",
+			@"  <Target Name=""GenerateTargetFrameworkMonikerAttribute"" />",
+			@"  <!-- To modify your build process, add your task inside one of the targets below and uncomment it.",
+			@"       Other similar extension points exist, see Microsoft.Common.targets.",
+			@"  <Target Name=""BeforeBuild"">",
+			@"  </Target>",
+			@"  <Target Name=""AfterBuild"">",
+			@"  </Target>",
+			@"  -->",
+			@"</Project>",
+			@"");
+		}
+
 		private static string GetSolutionText()
 		{
-			return string.Join("\r\n",
+			return string.Join(k_WindowsNewline,
 			@"",
 			@"Microsoft Visual Studio Solution File, Format Version {0}",
 			@"# Visual Studio {1}",
@@ -660,126 +792,6 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			@"{4}",
 			@"EndGlobal",
 			@"").Replace("    ", "\t");
-		}
-
-		private static string GetProjectFooterTemplate()
-		{
-			return string.Join("\r\n",
-			@"  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />",
-			@"  <Target Name=""GenerateTargetFrameworkMonikerAttribute"" />",
-			@"  <!-- To modify your build process, add your task inside one of the targets below and uncomment it.",
-			@"       Other similar extension points exist, see Microsoft.Common.targets.",
-			@"  <Target Name=""BeforeBuild"">",
-			@"  </Target>",
-			@"  <Target Name=""AfterBuild"">",
-			@"  </Target>",
-			@"  -->",
-			@"</Project>",
-			@"");
-		}
-
-		private string GetProjectHeaderTemplate(string[] roslynAnalyzerDllPaths, string roslynAnalyzerRulesetPath)
-		{
-			var header = new[]
-			{
-				@"<?xml version=""1.0"" encoding=""utf-8""?>",
-				@"<Project ToolsVersion=""{0}"" DefaultTargets=""Build"" xmlns=""{6}"">",
-				@"  <PropertyGroup>",
-				@"    <LangVersion>{11}</LangVersion>",
-				@"  </PropertyGroup>",
-				@"  <PropertyGroup>",
-				@"    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>",
-				@"    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>",
-				@"    <ProductVersion>{1}</ProductVersion>",
-				@"    <SchemaVersion>2.0</SchemaVersion>",
-				@"    <RootNamespace>{9}</RootNamespace>",
-				@"    <ProjectGuid>{{{2}}}</ProjectGuid>",
-				@"    <OutputType>Library</OutputType>",
-				@"    <AppDesignerFolder>Properties</AppDesignerFolder>",
-				@"    <AssemblyName>{7}</AssemblyName>",
-				@"    <TargetFrameworkVersion>{10}</TargetFrameworkVersion>",
-				@"    <FileAlignment>512</FileAlignment>",
-				@"    <BaseDirectory>{12}</BaseDirectory>",
-				@"  </PropertyGroup>",
-				@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">",
-				@"    <DebugSymbols>true</DebugSymbols>",
-				@"    <DebugType>full</DebugType>",
-				@"    <Optimize>false</Optimize>",
-				@"    <OutputPath>{8}</OutputPath>",
-				@"    <DefineConstants>{5}</DefineConstants>",
-				@"    <ErrorReport>prompt</ErrorReport>",
-				@"    <WarningLevel>4</WarningLevel>",
-				@"    <NoWarn>0169</NoWarn>",
-				@"    <AllowUnsafeBlocks>{13}</AllowUnsafeBlocks>",
-				@"  </PropertyGroup>",
-				@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">",
-				@"    <DebugType>pdbonly</DebugType>",
-				@"    <Optimize>true</Optimize>",
-				@"    <OutputPath>Temp\bin\Release\</OutputPath>",
-				@"    <ErrorReport>prompt</ErrorReport>",
-				@"    <WarningLevel>4</WarningLevel>",
-				@"    <NoWarn>0169</NoWarn>",
-				@"    <AllowUnsafeBlocks>{13}</AllowUnsafeBlocks>",
-				@"  </PropertyGroup>"
-			};
-
-			var forceExplicitReferences = new[]
-			{
-				@"  <PropertyGroup>",
-				@"    <NoConfig>true</NoConfig>",
-				@"    <NoStdLib>true</NoStdLib>",
-				@"    <AddAdditionalExplicitAssemblyReferences>false</AddAdditionalExplicitAssemblyReferences>",
-				@"    <ImplicitlyExpandNETStandardFacades>false</ImplicitlyExpandNETStandardFacades>",
-				@"    <ImplicitlyExpandDesignTimeFacades>false</ImplicitlyExpandDesignTimeFacades>",
-				@"  </PropertyGroup>"
-			};
-
-			var flavoring = new[]
-			{
-				@"  <PropertyGroup>",
-				@"    <ProjectTypeGuids>{{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1}};{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}</ProjectTypeGuids>",
-				@"    <UnityProjectGenerator>Package</UnityProjectGenerator>",
-				@"    <UnityProjectGeneratorVersion>{17}</UnityProjectGeneratorVersion>",
-				@"    <UnityProjectType>{14}</UnityProjectType>",
-				@"    <UnityBuildTarget>{15}</UnityBuildTarget>",
-				@"    <UnityVersion>{16}</UnityVersion>",
-				@"  </PropertyGroup>"
-			};
-
-			var footer = new[]
-			{
-				@""
-			};
-
-			var lines = header.Concat(forceExplicitReferences).Concat(flavoring).ToList();
-
-			// Only add analyzer block for compatible Visual Studio
-			if (m_CurrentInstallation != null && m_CurrentInstallation.SupportsAnalyzers)
-			{
-#if UNITY_2020_2_OR_NEWER
-                if (roslynAnalyzerRulesetPath != null)
-                {
-                    lines.Add(@"  <PropertyGroup>"); 
-                    lines.Add($"    <CodeAnalysisRuleSet>{roslynAnalyzerRulesetPath}</CodeAnalysisRuleSet>");
-                    lines.Add(@"  </PropertyGroup>");
-                }
-#endif
-
-				string[] analyzers = m_CurrentInstallation.GetAnalyzers();
-				string[] allAnalyzers = analyzers != null ? analyzers.Concat(roslynAnalyzerDllPaths).ToArray() : roslynAnalyzerDllPaths;
-
-				if (allAnalyzers.Any())
-				{
-					lines.Add(@"  <ItemGroup>");
-					foreach (var analyzer in allAnalyzers)
-					{
-						lines.Add($@"    <Analyzer Include=""{EscapedRelativePathFor(analyzer)}"" />");
-					}
-					lines.Add(@"  </ItemGroup>");
-				}
-			}
-
-			return string.Join("\r\n", lines.Concat(footer));
 		}
 
 		private void SyncSolution(IEnumerable<Assembly> assemblies)
@@ -837,7 +849,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (array == null || array.Length == 0)
 			{
 				// HideSolution by default
-				array = new SolutionProperties[] {
+				array = new [] {
 					new SolutionProperties() {
 						Name = "SolutionProperties",
 						Type = "preSolution",
@@ -908,8 +920,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private string EscapedRelativePathFor(string file)
 		{
-			var projectDir = FileUtility.Normalize(ProjectDirectory);
-			file = FileUtility.Normalize(file);
+			var projectDir = ProjectDirectory.NormalizePathSeparators();
+			file = file.NormalizePathSeparators();
 			var path = SkipPathPrefix(file, projectDir);
 
 			var packageInfo = m_AssemblyNameProvider.FindForAssetPath(path.Replace('\\', '/'));
@@ -917,7 +929,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			{
 				// We have to normalize the path, because the PackageManagerRemapper assumes
 				// dir seperators will be os specific.
-				var absolutePath = Path.GetFullPath(FileUtility.Normalize(path));
+				var absolutePath = Path.GetFullPath(path.NormalizePathSeparators());
 				path = SkipPathPrefix(absolutePath, projectDir);
 			}
 
@@ -929,11 +941,6 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (path.StartsWith($"{prefix}{Path.DirectorySeparatorChar}") && (path.Length > prefix.Length))
 				return path.Substring(prefix.Length + 1);
 			return path;
-		}
-
-		private static string ProjectFooter()
-		{
-			return GetProjectFooterTemplate();
 		}
 
 		static string GetProjectExtension()
@@ -956,7 +963,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private static string GetRootNamespace(Assembly assembly)
 		{
 #if UNITY_2020_2_OR_NEWER
-            return assembly.rootNamespace;
+			return assembly.rootNamespace;
 #else
 			return EditorSettings.projectGenerationRootNamespace;
 #endif

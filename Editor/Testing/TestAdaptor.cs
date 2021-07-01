@@ -30,7 +30,7 @@ namespace Microsoft.Unity.VisualStudio.Editor.Testing
 			FullName = testAdaptor.FullName;
 
 			Type = testAdaptor.TypeInfo?.FullName;
-			Method = testAdaptor?.Method?.Name;
+			Method = testAdaptor.Method?.Name;
 			Assembly = testAdaptor.TypeInfo?.Assembly?.Location;
 
 			Parent = parent;

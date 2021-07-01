@@ -158,6 +158,10 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				var addinPath = IOPath.Combine(Path, $"Contents/Resources/lib/monodevelop/AddIns/{addinName}");
 				if (File.Exists(IOPath.Combine(addinPath, addinAssembly)))
 					return addinPath;
+
+				addinPath = IOPath.Combine(Path, $"Contents/MonoBundle/Addins/{addinName}");
+				if (File.Exists(IOPath.Combine(addinPath, addinAssembly)))
+					return addinPath;
 			}
 
 			return null;
