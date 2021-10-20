@@ -41,7 +41,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (!VisualStudioEditor.IsEnabled)
 				return;
 
-			_listRequest = UnityEditor.PackageManager.Client.List();
+			if (!SessionSettings.PackageVersionChecked)
+				_listRequest = UnityEditor.PackageManager.Client.List();
 
 			RunOnceOnUpdate(() =>
 			{
@@ -148,6 +149,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				{
 					Debug.LogWarning($"Visual Studio Editor Package version {package.versions.latest} is available, we strongly encourage you to update from the Unity Package Manager for a better Visual Studio integration");
 				}
+
+				SessionSettings.PackageVersionChecked = true;
 			}
 
 			_listRequest = null;

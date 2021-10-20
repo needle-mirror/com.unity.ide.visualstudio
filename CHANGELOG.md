@@ -1,5 +1,14 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.12] - 2021-10-20
+
+Integration:
+
+- Do not block asset opening when only a VS instance without a loaded solution is found.
+- Only check package version once per Unity session.
+- Improved support for Visual Studio For Mac 2022.
+
+
 ## [2.0.11] - 2021-07-01
 
 Integration:

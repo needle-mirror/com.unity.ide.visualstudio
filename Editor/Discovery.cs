@@ -74,6 +74,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 				if (!File.Exists(fvi))
 					fvi = Path.Combine(editorPath, "Contents/MonoBundle/VisualStudio.exe");
+
+				if (!File.Exists(fvi))
+					fvi = Path.Combine(editorPath, "Contents/MonoBundle/VisualStudio.dll");				
 			}
 
 			if (!File.Exists(fvi))

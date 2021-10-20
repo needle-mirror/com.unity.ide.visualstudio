@@ -256,8 +256,10 @@ static win::ComPtr<EnvDTE::_DTE> FindRunningVisualStudioWithSolution(
 			continue;
 
 		std::filesystem::path currentSolutionPath = std::wstring(solutionFullName);
-		if (!currentSolutionPath.empty())
-			std::wcout << "Visual Studio opened on " << currentSolutionPath.wstring() << std::endl;
+		if (currentSolutionPath.empty())
+			continue;
+
+		std::wcout << "Visual Studio opened on " << currentSolutionPath.wstring() << std::endl;
 
 		// If the name matches the solution we want to open and we have a Visual Studio installation path to use and this one matches that path, then use it.
 		// If we don't have a Visual Studio installation path to use, just use this solution.
