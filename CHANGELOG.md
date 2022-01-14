@@ -1,5 +1,24 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.14] - 2022-01-14
+
+Integration:
+
+- Remove package version checking.
+
+
+## [2.0.13] - 2022-01-12
+
+Integration:
+
+- Fixed wrong path to analyzers in generated projects when using external packages.
+- Fixed selective project generation not creating Analyzer/LangVersion nodes.
+- Fixed asmdef references with Player projects.
+
+Documentation:
+
+- Added new documentation including ToC, overview, how to use and images.
+
 ## [2.0.12] - 2021-10-20
 
 Integration:
@@ -7,7 +26,6 @@ Integration:
 - Do not block asset opening when only a VS instance without a loaded solution is found.
 - Only check package version once per Unity session.
 - Improved support for Visual Studio For Mac 2022.
-
 
 ## [2.0.11] - 2021-07-01
 
@@ -19,7 +37,6 @@ Integration:
 Project generation:
 
 - Use absolute paths for Analyzers and rulesets.
-
 
 ## [2.0.10] - 2021-06-10
 

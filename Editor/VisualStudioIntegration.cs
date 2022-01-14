@@ -11,8 +11,6 @@ using System.Net.Sockets;
 using Microsoft.Unity.VisualStudio.Editor.Messaging;
 using Microsoft.Unity.VisualStudio.Editor.Testing;
 using UnityEditor;
-using UnityEditor.PackageManager;
-using UnityEditor.PackageManager.Requests;
 using UnityEngine;
 using MessageType = Microsoft.Unity.VisualStudio.Editor.Messaging.MessageType;
 
@@ -34,15 +32,10 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private static readonly object _incomingLock = new object();
 		private static readonly object _clientsLock = new object();
 
-		private static ListRequest _listRequest;
-
 		static VisualStudioIntegration()
 		{
 			if (!VisualStudioEditor.IsEnabled)
 				return;
-
-			if (!SessionSettings.PackageVersionChecked)
-				_listRequest = UnityEditor.PackageManager.Client.List();
 
 			RunOnceOnUpdate(() =>
 			{
@@ -134,35 +127,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			OnMessage(args.Message);
 		}
 
-		private static void HandleListRequestCompletion()
-		{
-			const string packageName = "com.unity.ide.visualstudio";
-
-			if (_listRequest.Status == StatusCode.Success)
-			{
-				var package = _listRequest.Result.FirstOrDefault(p => p.name == packageName);
-
-				if (package != null
-					&& Version.TryParse(package.version, out var packageVersion)
-					&& Version.TryParse(package.versions.latest, out var latestVersion)
-					&& packageVersion < latestVersion)
-				{
-					Debug.LogWarning($"Visual Studio Editor Package version {package.versions.latest} is available, we strongly encourage you to update from the Unity Package Manager for a better Visual Studio integration");
-				}
-
-				SessionSettings.PackageVersionChecked = true;
-			}
-
-			_listRequest = null;
-		}
-
 		private static void OnUpdate()
 		{
-			if (_listRequest != null && _listRequest.IsCompleted)
-			{
-				HandleListRequestCompletion();
-			}
-
 			lock (_incomingLock)
 			{
 				while (_incoming.Count > 0)
