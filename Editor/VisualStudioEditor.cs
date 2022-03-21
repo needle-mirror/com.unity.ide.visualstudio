@@ -63,6 +63,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		internal static bool IsEnabled => CodeEditor.CurrentEditor is VisualStudioEditor && UnityInstallation.IsMainUnityEditorProcess;
 
+		// this one seems legacy and not used anymore
+		// keeping it for now given it is public, so we need a major bump to remove it 
 		public void CreateIfDoesntExist()
 		{
 			if (!_generator.HasSolutionBeenGenerated())
@@ -260,7 +262,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				return true;
 
 			// We only want to check for cs scripts
-			if (ProjectGeneration.ScriptingLanguageFor(path) != ScriptingLanguage.CSharp)
+			if (ProjectGeneration.ScriptingLanguageForFile(path) != ScriptingLanguage.CSharp)
 				return true;
 
 			// Even on windows, the package manager requires relative path + unix style separators for queries
@@ -357,31 +359,14 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				absolutePath = Path.GetFullPath(path);
 			}
 
-			string solution = GetOrGenerateSolutionFile(path);
+			var solution = GetOrGenerateSolutionFile(path);
 			return OpenVisualStudio(CodeEditor.CurrentEditorInstallation, solution, absolutePath, line);
 		}
 
 		private string GetOrGenerateSolutionFile(string path)
 		{
-			var solution = GetSolutionFile(path);
-			if (solution == "")
-			{
-				_generator.Sync();
-				solution = GetSolutionFile(path);
-			}
-
-			return solution;
-		}
-
-		string GetSolutionFile(string path)
-		{
-			var solutionFile = _generator.SolutionFile();
-			if (File.Exists(solutionFile))
-			{
-				return solutionFile;
-			}
-
-			return "";
+			_generator.Sync();
+			return _generator.SolutionFile();
 		}
 	}
 }

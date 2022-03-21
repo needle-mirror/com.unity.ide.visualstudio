@@ -55,8 +55,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		static readonly string[] k_ReimportSyncExtensions = { ".dll", ".asmdef" };
 
-		string[] m_ProjectSupportedExtensions = Array.Empty<string>();
-		string[] m_BuiltinSupportedExtensions = Array.Empty<string>();
+		HashSet<string> m_ProjectSupportedExtensions = new HashSet<string>();
+		HashSet<string> m_BuiltinSupportedExtensions = new HashSet<string>();
 
 		readonly string m_ProjectName;
 		readonly IAssemblyNameProvider m_AssemblyNameProvider;
@@ -217,8 +217,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private void SetupProjectSupportedExtensions()
 		{
-			m_ProjectSupportedExtensions = m_AssemblyNameProvider.ProjectSupportedExtensions;
-			m_BuiltinSupportedExtensions = EditorSettings.projectGenerationBuiltinExtensions;
+			m_ProjectSupportedExtensions = new HashSet<string>(m_AssemblyNameProvider.ProjectSupportedExtensions);
+			m_BuiltinSupportedExtensions = new HashSet<string>(EditorSettings.projectGenerationBuiltinExtensions);
 		}
 
 		private bool ShouldFileBePartOfSolution(string file)
@@ -246,23 +246,29 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public bool IsSupportedFile(string path)
 		{
-			var extension = GetExtensionWithoutDot(path);
+			return IsSupportedFile(path, out _);
+		}
+
+		private bool IsSupportedFile(string path, out string extensionWithoutDot)
+		{
+			extensionWithoutDot = GetExtensionWithoutDot(path);
 
 			// Dll's are not scripts but still need to be included
-			if (extension == "dll")
+			if (extensionWithoutDot == "dll")
 				return true;
 
-			if (extension == "asmdef")
+			if (extensionWithoutDot == "asmdef")
 				return true;
 
-			if (m_BuiltinSupportedExtensions.Contains(extension))
+			if (m_BuiltinSupportedExtensions.Contains(extensionWithoutDot))
 				return true;
 
-			if (m_ProjectSupportedExtensions.Contains(extension))
+			if (m_ProjectSupportedExtensions.Contains(extensionWithoutDot))
 				return true;
 
 			return false;
 		}
+
 
 		private static ScriptingLanguage ScriptingLanguageFor(Assembly assembly)
 		{
@@ -271,12 +277,17 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (files.Length == 0)
 				return ScriptingLanguage.None;
 
-			return ScriptingLanguageFor(files[0]);
+			return ScriptingLanguageForFile(files[0]);
 		}
 
-		internal static ScriptingLanguage ScriptingLanguageFor(string path)
+		internal static ScriptingLanguage ScriptingLanguageForExtension(string extensionWithoutDot)
 		{
-			return GetExtensionWithoutDot(path) == "cs" ? ScriptingLanguage.CSharp : ScriptingLanguage.None;
+			return extensionWithoutDot == "cs" ? ScriptingLanguage.CSharp : ScriptingLanguage.None;
+		}
+
+		internal static ScriptingLanguage ScriptingLanguageForFile(string path)
+		{
+			return ScriptingLanguageForExtension(GetExtensionWithoutDot(path));
 		}
 
 		public void GenerateAndWriteSolutionAndProjects()
@@ -336,7 +347,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 					continue;
 				}
 
-				if (IsSupportedFile(asset) && ScriptingLanguage.None == ScriptingLanguageFor(asset))
+				if (IsSupportedFile(asset, out var extensionWithoutDot) && ScriptingLanguage.None == ScriptingLanguageForExtension(extensionWithoutDot))
 				{
 					// Find assembly the asset belongs to by adding script extension and using compilation pipeline.
 					var assemblyName = m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset);
@@ -354,7 +365,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 						stringBuilders[assemblyName] = projectBuilder;
 					}
 
-					projectBuilder.Append("    <None Include=\"").Append(EscapedRelativePathFor(asset)).Append("\" />").Append(k_WindowsNewline);
+					IncludeAsset(projectBuilder, "None", asset);
 				}
 			}
 
@@ -364,6 +375,26 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				result[entry.Key] = entry.Value.ToString();
 
 			return result;
+		}
+
+		private void IncludeAsset(StringBuilder builder, string tag, string asset)
+		{
+			var filename = EscapedRelativePathFor(asset, out var packageInfo);
+
+			builder.Append($"    <{tag} Include=\"").Append(filename);
+			if (Path.IsPathRooted(filename) && packageInfo != null)
+			{
+				// We are outside the Unity project and using a package context
+				var linkPath = SkipPathPrefix(asset.NormalizePathSeparators(), packageInfo.assetPath.NormalizePathSeparators());
+
+				builder.Append("\">").Append(k_WindowsNewline);
+				builder.Append("      <Link>").Append(linkPath).Append("</Link>").Append(k_WindowsNewline);
+				builder.Append($"    </{tag}>").Append(k_WindowsNewline);
+			}
+			else
+			{
+				builder.Append("\" />").Append(k_WindowsNewline);
+			}
 		}
 
 		private void SyncProject(
@@ -479,17 +510,16 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
 			foreach (string file in assembly.sourceFiles)
 			{
-				if (!IsSupportedFile(file))
+				if (!IsSupportedFile(file, out var extensionWithoutDot))
 					continue;
 
-				var extension = Path.GetExtension(file).ToLower();
-				var fullFile = EscapedRelativePathFor(file);
-				if (".dll" != extension)
+				if ("dll" != extensionWithoutDot)
 				{
-					projectBuilder.Append("    <Compile Include=\"").Append(fullFile).Append("\" />").Append(k_WindowsNewline);
+					IncludeAsset(projectBuilder, "Compile", file);
 				}
 				else
 				{
+					var fullFile = EscapedRelativePathFor(file, out _);
 					references.Add(fullFile);
 				}
 			}
@@ -564,7 +594,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private void AppendReference(string fullReference, StringBuilder projectBuilder)
 		{
-			var escapedFullPath = EscapedRelativePathFor(fullReference);
+			var escapedFullPath = EscapedRelativePathFor(fullReference, out _);
 			projectBuilder.Append("    <Reference Include=\"").Append(Path.GetFileNameWithoutExtension(escapedFullPath)).Append("\">").Append(k_WindowsNewline);
 			projectBuilder.Append("      <HintPath>").Append(escapedFullPath).Append("</HintPath>").Append(k_WindowsNewline);
 			projectBuilder.Append("    </Reference>").Append(k_WindowsNewline);
@@ -924,13 +954,13 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				projectGuid);
 		}
 
-		private string EscapedRelativePathFor(string file)
+		private string EscapedRelativePathFor(string file, out UnityEditor.PackageManager.PackageInfo packageInfo)
 		{
 			var projectDir = ProjectDirectory.NormalizePathSeparators();
 			file = file.NormalizePathSeparators();
 			var path = SkipPathPrefix(file, projectDir);
 
-			var packageInfo = m_AssemblyNameProvider.FindForAssetPath(path.Replace('\\', '/'));
+			packageInfo = m_AssemblyNameProvider.FindForAssetPath(path.NormalizeWindowsToUnix());
 			if (packageInfo != null)
 			{
 				// We have to normalize the path, because the PackageManagerRemapper assumes

@@ -1,5 +1,15 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.15] - 2022-03-21
+
+Integration:
+
+- Improved project generation performance.
+- Added support for keeping file/folder structure when working with external packages.
+- Fixed project generation not being refreshed when selecting Visual Studio as the preferred external editor.
+
+
+
 ## [2.0.14] - 2022-01-14
 
 Integration:
