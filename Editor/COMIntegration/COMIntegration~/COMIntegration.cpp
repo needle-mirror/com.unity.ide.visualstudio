@@ -11,6 +11,9 @@
 #include <windows.h>
 #include <shlwapi.h>
 
+#include <fcntl.h>
+#include <io.h>
+
 #include "BStrHolder.h"
 #include "ComPtr.h"
 #include "dte80a.tlh"
@@ -441,6 +444,10 @@ static bool VisualStudioOpenFile(
 }
 
 int wmain(int argc, wchar_t* argv[]) {
+
+	// We need this to properly display UTF16 text on the console
+	_setmode(_fileno(stdout), _O_U16TEXT);	
+	
 	if (argc != 3 && argc != 5) {
 		std::wcerr << argc << ": wrong number of arguments\n" << "Usage: com.exe installationPath solutionPath [fileName lineNumber]" << std::endl;
 		for (int i = 0; i < argc; i++) {

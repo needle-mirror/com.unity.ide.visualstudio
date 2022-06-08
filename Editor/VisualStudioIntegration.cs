@@ -239,6 +239,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (!EditorPrefs.GetBool("kAutoRefresh", true))
 				return;
 
+			if (UnityInstallation.IsInSafeMode)
+				return;
+
 			RunOnceOnUpdate(AssetDatabase.Refresh);
 		}
 

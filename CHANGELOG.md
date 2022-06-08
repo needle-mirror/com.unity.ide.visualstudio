@@ -1,5 +1,13 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.16] - 2022-06-08
+
+Integration:
+
+- Prevent ADB Refresh while being in safe-mode with a URP project
+- Fixed an issue keeping the progress bar visible even after opening a script with Visual Studio. 
+
+
 ## [2.0.15] - 2022-03-21
 
 Integration:
@@ -8,14 +16,11 @@ Integration:
 - Added support for keeping file/folder structure when working with external packages.
 - Fixed project generation not being refreshed when selecting Visual Studio as the preferred external editor.
 
-
-
 ## [2.0.14] - 2022-01-14
 
 Integration:
 
 - Remove package version checking.
-
 
 ## [2.0.13] - 2022-01-12
 

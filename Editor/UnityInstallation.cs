@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 using System;
+using UnityEditor;
 using UnityEditor.Compilation;
 
 namespace Microsoft.Unity.VisualStudio.Editor
@@ -37,6 +38,17 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			}
 		}
 
+		private static readonly Lazy<bool> _lazyIsInSafeMode = new Lazy<bool>(() =>
+		{
+			// internal static extern bool isInSafeMode { get {} }
+			var ieu = typeof(EditorUtility);
+			var pinfo = ieu.GetProperty("isInSafeMode", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+			if (pinfo == null)
+				return false;
+
+			return Convert.ToBoolean(pinfo.GetValue(null));
+		});
+		public static bool IsInSafeMode => _lazyIsInSafeMode.Value;
 		public static Version LatestLanguageVersionSupported(Assembly assembly)
 		{
 #if UNITY_2020_2_OR_NEWER
