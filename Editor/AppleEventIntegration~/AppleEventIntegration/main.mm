@@ -3,7 +3,7 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
- 
+
 #import <Cocoa/Cocoa.h>
 #import <Foundation/Foundation.h>
 
@@ -11,7 +11,7 @@
 #define keyFileSender                                   1179872868
 
 // 16 bit aligned legacy struct - this should total 20 bytes
-struct SelectionRange
+typedef struct _SelectionRange
 {
     int16_t unused1;    // 0 (not used)
     int16_t lineNum;    // line to select (<0 to specify range)
@@ -19,7 +19,7 @@ struct SelectionRange
     int32_t endRange;   // end of selection range (if line < 0)
     int32_t unused2;    // 0 (not used)
     int32_t theDate;    // modification date/time
-} __attribute__((packed));
+} __attribute__((packed)) SelectionRange;
 
 static NSString* MakeNSString(const char* str)
 {
@@ -200,18 +200,13 @@ static NSRunningApplication* QueryRunningApplicationOpenedOnSolution(NSString* a
 
 static NSRunningApplication* LaunchApplicationOnSolution(NSString* appPath, NSString* solutionPath)
 {
-    NSURL* appUrl = [NSURL fileURLWithPath: appPath];
-    NSMutableDictionary* config = [[NSMutableDictionary alloc] init];
-
-    NSRunningApplication* runningApp = [[NSWorkspace sharedWorkspace]
-        launchApplicationAtURL: appUrl
+    return [[NSWorkspace sharedWorkspace]
+        launchApplicationAtURL: [NSURL fileURLWithPath: appPath]
         options: NSWorkspaceLaunchDefault | NSWorkspaceLaunchNewInstance
-        configuration: config
+        configuration: @{
+            NSWorkspaceLaunchConfigurationArguments: @[ solutionPath ],
+        }
         error: nil];
-
-    OpenFileAtLineWithAppleEvent(runningApp, solutionPath, -1);
-    
-    return runningApp;
 }
 
 static NSRunningApplication* QueryOrLaunchApplication(NSString* appPath, NSString* solutionPath)

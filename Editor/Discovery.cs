@@ -150,31 +150,15 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (string.IsNullOrWhiteSpace(progpath))
 				return Enumerable.Empty<VisualStudioInstallation>();
 
-			var process = new Process
-			{
-				StartInfo = new ProcessStartInfo
-				{
-					FileName = progpath,
-					Arguments = "-prerelease -format json -utf8",
-					UseShellExecute = false,
-					CreateNoWindow = true,
-					RedirectStandardOutput = true,
-					RedirectStandardError = true,
-				}
-			};
+			var result = ProcessRunner.StartAndWaitForExit(progpath, "-prerelease -format json -utf8");
 
-			using (process)
-			{
-				var json = string.Empty;
+			if (!result.Success)
+				throw new Exception($"Failure while running vswhere: {result.Error}");
 
-				process.OutputDataReceived += (o, e) => json += e.Data;
-				process.Start();
-				process.BeginOutputReadLine();
-				process.WaitForExit();
-
-				var result = VsWhereResult.FromJson(json);
-				return result.ToVisualStudioInstallations();
-			}
+			// Do not catch any JsonException here, this will be handled by the caller
+			return VsWhereResult
+				.FromJson(result.Output)
+				.ToVisualStudioInstallations();
 		}
 	}
 }

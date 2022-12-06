@@ -11,20 +11,24 @@ namespace Microsoft.Unity.VisualStudio.Editor
 	internal class AsyncOperation<T>
 	{
 		private readonly Func<T> _producer;
+		private readonly Func<Exception, T> _exceptionHandler;
+		private readonly Action _finalHandler;
 		private readonly ManualResetEventSlim _resetEvent;
 
 		private T _result;
 		private Exception _exception;
 
-		private AsyncOperation(Func<T> producer)
+		private AsyncOperation(Func<T> producer, Func<Exception, T> exceptionHandler, Action finalHandler)
 		{
 			_producer = producer;
+			_exceptionHandler = exceptionHandler;
+			_finalHandler = finalHandler;
 			_resetEvent = new ManualResetEventSlim(initialState: false);
 		}
 
-		public static AsyncOperation<T> Run(Func<T> producer)
+		public static AsyncOperation<T> Run(Func<T> producer, Func<Exception, T> exceptionHandler = null, Action finalHandler = null)
 		{
-			var task = new AsyncOperation<T>(producer);
+			var task = new AsyncOperation<T>(producer, exceptionHandler, finalHandler);
 			task.Run();
 			return task;
 		}
@@ -40,9 +44,15 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				catch (Exception e)
 				{
 					_exception = e;
+
+					if (_exceptionHandler != null)
+					{
+						_result = _exceptionHandler(e);
+					}
 				}
 				finally
 				{
+					_finalHandler?.Invoke();
 					_resetEvent.Set();
 				}
 			});

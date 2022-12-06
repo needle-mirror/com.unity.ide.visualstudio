@@ -43,6 +43,10 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		// C# language version support for Visual Studio
 		private static VersionPair[] WindowsVersionTable =
 		{
+			// VisualStudio 2022
+			new VersionPair(17,4, /* => */ 11,0),
+			new VersionPair(17,0, /* => */ 10,0),
+
 			// VisualStudio 2019
 			new VersionPair(16,8, /* => */ 9,0),
 			new VersionPair(16,0, /* => */ 8,0),
@@ -57,6 +61,10 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		// C# language version support for Visual Studio for Mac
 		private static VersionPair[] OSXVersionTable =
 		{
+			// VisualStudio for Mac 2022
+			new VersionPair(17,4, /* => */ 11,0),
+			new VersionPair(17,0, /* => */ 10,0),
+
 			// VisualStudio for Mac 8.x
 			new VersionPair(8,8, /* => */ 9,0),
 			new VersionPair(8,3, /* => */ 8,0),

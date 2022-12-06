@@ -4,7 +4,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -12,6 +11,8 @@ using System.Runtime.CompilerServices;
 using UnityEditor;
 using UnityEngine;
 using Unity.CodeEditor;
+using System.Threading;
+using System.Collections.Concurrent;
 
 [assembly: InternalsVisibleTo("Unity.VisualStudio.EditorTests")]
 [assembly: InternalsVisibleTo("Unity.VisualStudio.Standalone.EditorTests")]
@@ -287,6 +288,14 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return false;
 		}
 
+		private enum COMIntegrationState
+		{
+			Running,
+			DisplayProgressBar,
+			ClearProgressBar,
+			Exited
+		}
+
 		private bool OpenWindowsApp(string path, int line)
 		{
 			var progpath = FileUtility.GetPackageAssetFullPath("Editor", "COMIntegration", "Release", "COMIntegration.exe");
@@ -309,44 +318,67 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				solution = solution.Replace("^", "^^");
 			}
 
-			var process = new Process
-			{
-				StartInfo = new ProcessStartInfo
-				{
-					FileName = progpath,
-					Arguments = $"\"{CodeEditor.CurrentEditorInstallation}\" {solution} \"{absolutePath}\" {line}",
-					CreateNoWindow = true,
-					UseShellExecute = false,
-					RedirectStandardOutput = true,
-					StandardOutputEncoding = System.Text.Encoding.Unicode,
-					RedirectStandardError = true,
-					StandardErrorEncoding = System.Text.Encoding.Unicode,
-				}
-			};
-			var result = process.Start();
+			
+			var psi = ProcessRunner.ProcessStartInfoFor(progpath, $"\"{CodeEditor.CurrentEditorInstallation}\" {solution} \"{absolutePath}\" {line}");
+			psi.StandardOutputEncoding = System.Text.Encoding.Unicode;
+			psi.StandardErrorEncoding = System.Text.Encoding.Unicode;
 
-			while (!process.StandardOutput.EndOfStream)
-			{
-				var outputLine = process.StandardOutput.ReadLine();
-				if (outputLine == "displayProgressBar")
-				{
-					EditorUtility.DisplayProgressBar("Opening Visual Studio", "Starting up Visual Studio, this might take some time.", .5f);
-				}
+			// inter thread communication
+			var messages = new BlockingCollection<COMIntegrationState>();
 
-				if (outputLine == "clearprogressbar")
+			var asyncStart = AsyncOperation<ProcessRunnerResult>.Run(
+				() => ProcessRunner.StartAndWaitForExit(psi, onOutputReceived: data => OnOutputReceived(data, messages)),
+				e => new ProcessRunnerResult {Success = false, Error = e.Message, Output = string.Empty},
+				() => messages.Add(COMIntegrationState.Exited)
+			);
+
+			MonitorCOMIntegration(messages);
+
+			var result = asyncStart.Result;
+
+			if (!result.Success && !string.IsNullOrWhiteSpace(result.Error))
+				Debug.LogError($"Error while starting Visual Studio: {result.Error}");
+
+			return result.Success;
+		}
+
+		private static void MonitorCOMIntegration(BlockingCollection<COMIntegrationState> messages)
+		{
+			var displayingProgress = false;
+			COMIntegrationState state;
+			
+			do
+			{
+				state = messages.Take();
+				switch (state)
 				{
-					EditorUtility.ClearProgressBar();
+					case COMIntegrationState.ClearProgressBar:
+						EditorUtility.ClearProgressBar();
+						displayingProgress = false;
+						break;
+					case COMIntegrationState.DisplayProgressBar:
+						EditorUtility.DisplayProgressBar("Opening Visual Studio", "Starting up Visual Studio, this might take some time.", .5f);
+						displayingProgress = true;
+						break;
 				}
+			} while (state != COMIntegrationState.Exited);
+
+			// Make sure the progress bar is properly cleared in case of COMIntegration failure
+			if (displayingProgress)
+				EditorUtility.ClearProgressBar();
+		}
+		
+		private static readonly COMIntegrationState[] ProgressBarCommands = {COMIntegrationState.DisplayProgressBar, COMIntegrationState.ClearProgressBar};
+		private static void OnOutputReceived(string data, BlockingCollection<COMIntegrationState> messages)
+		{
+			if (data == null)
+				return;
+
+			foreach (var cmd in ProgressBarCommands)
+			{
+				if (data.IndexOf(cmd.ToString(), StringComparison.OrdinalIgnoreCase) >= 0)
+					messages.Add(cmd);
 			}
-
-			var errorOutput = process.StandardError.ReadToEnd();
-			if (!string.IsNullOrEmpty(errorOutput))
-			{
-				Console.WriteLine("Error: \n" + errorOutput);
-			}
-
-			process.WaitForExit();
-			return result;
 		}
 
 		[DllImport("AppleEventIntegration")]

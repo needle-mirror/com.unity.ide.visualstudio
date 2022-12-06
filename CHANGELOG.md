@@ -1,12 +1,25 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.17] - 2022-12-06
+
+Integration:
+
+- Fix rare deadlocks while discovering or launching Visual Studio on Windows.
+- Improve launching Visual Studio on macOs.
+
+Project generation:
+
+- Include analyzers from response files.
+- Update supported C# versions.
+- Performance improvements.
+
+
 ## [2.0.16] - 2022-06-08
 
 Integration:
 
 - Prevent ADB Refresh while being in safe-mode with a URP project
 - Fixed an issue keeping the progress bar visible even after opening a script with Visual Studio. 
-
 
 ## [2.0.15] - 2022-03-21
 

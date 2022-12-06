@@ -205,6 +205,32 @@ static bool StartVisualStudioProcess(
 	return true;
 }
 
+static bool
+MonikerIsVisualStudioProcess(const win::ComPtr<IMoniker> &moniker, const win::ComPtr<IBindCtx> &bindCtx, const DWORD dwProcessId = 0) {
+	LPOLESTR oleMonikerName;
+	if (FAILED(moniker->GetDisplayName(bindCtx, nullptr, &oleMonikerName)))
+		return false;
+
+	std::wstring monikerName(oleMonikerName);
+
+	// VisualStudio Moniker is "!VisualStudio.DTE.$Version:$PID"
+	// Example "!VisualStudio.DTE.14.0:1234"
+
+	if (monikerName.find(L"!VisualStudio.DTE") != 0)
+		return false;
+	
+	if (dwProcessId == 0)
+		return true;
+
+	std::wstringstream suffixStream;
+	suffixStream << ":";
+	suffixStream << dwProcessId;
+
+	std::wstring suffix(suffixStream.str());
+
+	return monikerName.length() - suffix.length() == monikerName.find(suffix);
+}
+
 static win::ComPtr<EnvDTE::_DTE> FindRunningVisualStudioWithSolution(
 	const std::filesystem::path &visualStudioExecutablePath,
 	const std::filesystem::path &solutionPath)
@@ -232,6 +258,9 @@ static win::ComPtr<EnvDTE::_DTE> FindRunningVisualStudioWithSolution(
 	win::ComPtr<IMoniker> moniker;
 	ULONG monikersFetched = 0;
 	while (SUCCEEDED(enumMoniker->Next(1, &moniker, &monikersFetched)) && monikersFetched) {
+		if (!MonikerIsVisualStudioProcess(moniker, bindCtx))
+			continue;
+
 		if (FAILED(ROT->GetObject(moniker, &punk)))
 			continue;
 
@@ -285,29 +314,6 @@ static win::ComPtr<EnvDTE::_DTE> FindRunningVisualStudioWithSolution(
 	return nullptr;
 }
 
-static bool
-MonikerIsVisualStudioProcess(const win::ComPtr<IMoniker> &moniker, const win::ComPtr<IBindCtx> &bindCtx, const DWORD dwProcessId) {
-	LPOLESTR oleMonikerName;
-	if (FAILED(moniker->GetDisplayName(bindCtx, nullptr, &oleMonikerName)))
-		return false;
-
-	std::wstring monikerName(oleMonikerName);
-
-	// VisualStudio Moniker is "!VisualStudio.DTE.$Version:$PID"
-	// Example "!VisualStudio.DTE.14.0:1234"
-
-	if (monikerName.find(L"!VisualStudio.DTE") != 0)
-		return false;
-
-	std::wstringstream suffixStream;
-	suffixStream << ":";
-	suffixStream << dwProcessId;
-
-	std::wstring suffix(suffixStream.str());
-
-	return monikerName.length() - suffix.length() == monikerName.find(suffix);
-}
-
 static win::ComPtr<EnvDTE::_DTE> FindRunningVisualStudioWithPID(const DWORD dwProcessId) {
 	win::ComPtr<IUnknown> punk = nullptr;
 	win::ComPtr<EnvDTE::_DTE> dte = nullptr;
@@ -329,10 +335,10 @@ static win::ComPtr<EnvDTE::_DTE> FindRunningVisualStudioWithPID(const DWORD dwPr
 	win::ComPtr<IMoniker> moniker;
 	ULONG monikersFetched = 0;
 	while (SUCCEEDED(enumMoniker->Next(1, &moniker, &monikersFetched)) && monikersFetched) {
-		if (FAILED(ROT->GetObject(moniker, &punk)))
+		if (!MonikerIsVisualStudioProcess(moniker, bindCtx, dwProcessId))
 			continue;
 
-		if (!MonikerIsVisualStudioProcess(moniker, bindCtx, dwProcessId))
+		if (FAILED(ROT->GetObject(moniker, &punk)))
 			continue;
 
 		punk.As(&dte);

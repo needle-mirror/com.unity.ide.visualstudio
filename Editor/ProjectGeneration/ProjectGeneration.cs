@@ -43,6 +43,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		public IAssemblyNameProvider AssemblyNameProvider => m_AssemblyNameProvider;
 		public string ProjectDirectory { get; }
 
+		// Use this to have the same newline ending on all platforms for consistency.
 		const string k_WindowsNewline = "\r\n";
 
 		const string m_SolutionProjectEntryTemplate = @"Project(""{{{0}}}"") = ""{1}"", ""{2}"", ""{{{3}}}""{4}EndProject";
@@ -126,11 +127,11 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				var affectedNames = affected
 					.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset))
 					.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name =>
-						name.Split(new[] {".dll"}, StringSplitOptions.RemoveEmptyEntries)[0]);
+						name.Split(new[] { ".dll" }, StringSplitOptions.RemoveEmptyEntries)[0]);
 				var reimportedNames = reimported
 					.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset))
 					.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name =>
-						name.Split(new[] {".dll"}, StringSplitOptions.RemoveEmptyEntries)[0]);
+						name.Split(new[] { ".dll" }, StringSplitOptions.RemoveEmptyEntries)[0]);
 				var affectedAndReimported = new HashSet<string>(affectedNames.Concat(reimportedNames));
 
 				foreach (var assembly in allProjectAssemblies)
@@ -381,19 +382,19 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		{
 			var filename = EscapedRelativePathFor(asset, out var packageInfo);
 
-			builder.Append($"    <{tag} Include=\"").Append(filename);
+			builder.Append("    <").Append(tag).Append(@" Include=""").Append(filename);
 			if (Path.IsPathRooted(filename) && packageInfo != null)
 			{
 				// We are outside the Unity project and using a package context
 				var linkPath = SkipPathPrefix(asset.NormalizePathSeparators(), packageInfo.assetPath.NormalizePathSeparators());
 
-				builder.Append("\">").Append(k_WindowsNewline);
+				builder.Append(@""">").Append(k_WindowsNewline);
 				builder.Append("      <Link>").Append(linkPath).Append("</Link>").Append(k_WindowsNewline);
 				builder.Append($"    </{tag}>").Append(k_WindowsNewline);
 			}
 			else
 			{
-				builder.Append("\" />").Append(k_WindowsNewline);
+				builder.Append(@""" />").Append(k_WindowsNewline);
 			}
 		}
 
@@ -504,7 +505,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			Dictionary<string, string> allAssetsProjectParts,
 			ResponseFileData[] responseFilesData)
 		{
-			var projectBuilder = new StringBuilder(ProjectHeader(assembly, responseFilesData));
+			ProjectHeader(assembly, responseFilesData, out StringBuilder projectBuilder);
+
 			var references = new List<string>();
 
 			projectBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
@@ -563,7 +565,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 					// If the current assembly is a Player project, we want to project-reference the corresponding Player project
 					var referenceName = m_AssemblyNameProvider.GetAssemblyName(assembly.outputPath, reference.name);
 
-					projectBuilder.Append("    <ProjectReference Include=\"").Append(referenceName).Append(GetProjectExtension()).Append("\">").Append(k_WindowsNewline);
+					projectBuilder.Append(@"    <ProjectReference Include=""").Append(referenceName).Append(GetProjectExtension()).Append(@""">").Append(k_WindowsNewline);
 					projectBuilder.Append("      <Project>{").Append(ProjectGuid(referenceName)).Append("}</Project>").Append(k_WindowsNewline);
 					projectBuilder.Append("      <Name>").Append(referenceName).Append("</Name>").Append(k_WindowsNewline);
 					projectBuilder.Append("    </ProjectReference>").Append(k_WindowsNewline);
@@ -595,7 +597,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private void AppendReference(string fullReference, StringBuilder projectBuilder)
 		{
 			var escapedFullPath = EscapedRelativePathFor(fullReference, out _);
-			projectBuilder.Append("    <Reference Include=\"").Append(Path.GetFileNameWithoutExtension(escapedFullPath)).Append("\">").Append(k_WindowsNewline);
+			projectBuilder.Append(@"    <Reference Include=""").Append(Path.GetFileNameWithoutExtension(escapedFullPath)).Append(@""">").Append(k_WindowsNewline);
 			projectBuilder.Append("      <HintPath>").Append(escapedFullPath).Append("</HintPath>").Append(k_WindowsNewline);
 			projectBuilder.Append("    </Reference>").Append(k_WindowsNewline);
 		}
@@ -632,25 +634,77 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return targetLanguageVersion;
 		}
 
-		private string ProjectHeader(
+		private static IEnumerable<string> GetOtherArguments(ResponseFileData[] responseFilesData, HashSet<string> names)
+		{
+			var lines = responseFilesData
+				.SelectMany(x => x.OtherArguments)
+				.Where(l => !string.IsNullOrEmpty(l))
+				.Select(l => l.Trim())
+				.Where(l => l.StartsWith("/") || l.StartsWith("-"));
+
+			foreach (var argument in lines)
+			{
+				var index = argument.IndexOf(":", StringComparison.Ordinal);
+				if (index == -1)
+					continue;
+
+				var key = argument
+					.Substring(1, index - 1)
+					.Trim();
+				
+				if (!names.Contains(key))
+					continue;
+
+				if (argument.Length <= index)
+					continue;
+
+				yield return argument
+					.Substring(index + 1)
+					.Trim();
+			}
+		}
+
+		private string[] GetAnalyzers(Assembly assembly, ResponseFileData[] responseFilesData, out string rulesetPath)
+		{
+			rulesetPath = null;
+			
+			if (m_CurrentInstallation == null || !m_CurrentInstallation.SupportsAnalyzers)
+				return Array.Empty<string>();
+			
+			// Analyzers provided by VisualStudio
+			List<string> analyzers = new List<string>(m_CurrentInstallation.GetAnalyzers());
+
+#if UNITY_2020_2_OR_NEWER
+			// Analyzers + ruleset provided by Unity
+			analyzers.AddRange(assembly.compilerOptions.RoslynAnalyzerDllPaths);
+
+			rulesetPath = assembly
+				.compilerOptions
+				.RoslynAnalyzerRulesetPath
+				.MakeAbsolutePath()
+				.NormalizePathSeparators();
+#endif
+
+			// Analyzers provided by csc.rsp
+			analyzers.AddRange(GetOtherArguments(responseFilesData, new HashSet<string>(new[] { "analyzer", "a" })));
+
+			return analyzers
+				.Where(a => !string.IsNullOrEmpty(a))
+				.Select(a => a.MakeAbsolutePath().NormalizePathSeparators())
+				.Distinct()
+				.ToArray();
+		}
+
+		private void ProjectHeader(
 			Assembly assembly,
-			ResponseFileData[] responseFilesData
+			ResponseFileData[] responseFilesData,
+			out StringBuilder headerBuilder
 		)
 		{
 			var projectType = ProjectTypeOf(assembly.name);
-			string rulesetPath = null;
-			var analyzers = Array.Empty<string>();
+			var analyzers = GetAnalyzers(assembly, responseFilesData, out var rulesetPath);
 
-			if (m_CurrentInstallation != null && m_CurrentInstallation.SupportsAnalyzers)
-			{
-				analyzers = m_CurrentInstallation.GetAnalyzers();
-#if UNITY_2020_2_OR_NEWER
-				analyzers = analyzers != null ? analyzers.Concat(assembly.compilerOptions.RoslynAnalyzerDllPaths).ToArray() : assembly.compilerOptions.RoslynAnalyzerDllPaths;
-				rulesetPath = assembly.compilerOptions.RoslynAnalyzerRulesetPath;
-#endif
-			}
-
-			var projectProperties = new ProjectProperties()
+			var projectProperties = new ProjectProperties
 			{
 				ProjectGuid = ProjectGuid(assembly),
 				LangVersion = GetLangVersion(assembly),
@@ -658,9 +712,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				RootNamespace = GetRootNamespace(assembly),
 				OutputPath = assembly.outputPath,
 				// Analyzers
-				Analyzers = analyzers,
 				RulesetPath = rulesetPath,
 				// RSP alterable
+				Analyzers = analyzers,
 				Defines = assembly.defines.Concat(responseFilesData.SelectMany(x => x.Defines)).Distinct().ToArray(),
 				Unsafe = assembly.compilerOptions.AllowUnsafeCode | responseFilesData.Any(x => x.Unsafe),
 				// VSTU Flavoring
@@ -670,7 +724,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				FlavoringPackageVersion = VisualStudioIntegration.PackageVersion(),
 			};
 
-			return GetProjectHeader(projectProperties);
+			GetProjectHeader(projectProperties, out headerBuilder);
 		}
 
 		private enum ProjectType
@@ -696,102 +750,86 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return ProjectType.Game;
 		}
 
-		private string GetProjectHeader(ProjectProperties properties)
+		private void GetProjectHeader(ProjectProperties properties, out StringBuilder headerBuilder)
 		{
-			var header = new[]
-			{
-				$@"<?xml version=""1.0"" encoding=""utf-8""?>",
-				$@"<Project ToolsVersion=""4.0"" DefaultTargets=""Build"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"">",
-				$@"  <PropertyGroup>",
-				$@"    <LangVersion>{properties.LangVersion}</LangVersion>",
-				$@"  </PropertyGroup>",
-				$@"  <PropertyGroup>",
-				$@"    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>",
-				$@"    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>",
-				$@"    <ProductVersion>10.0.20506</ProductVersion>",
-				$@"    <SchemaVersion>2.0</SchemaVersion>",
-				$@"    <RootNamespace>{properties.RootNamespace}</RootNamespace>",
-				$@"    <ProjectGuid>{{{properties.ProjectGuid}}}</ProjectGuid>",
-				$@"    <OutputType>Library</OutputType>",
-				$@"    <AppDesignerFolder>Properties</AppDesignerFolder>",
-				$@"    <AssemblyName>{properties.AssemblyName}</AssemblyName>",
-				$@"    <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>",
-				$@"    <FileAlignment>512</FileAlignment>",
-				$@"    <BaseDirectory>.</BaseDirectory>",
-				$@"  </PropertyGroup>",
-				$@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">",
-				$@"    <DebugSymbols>true</DebugSymbols>",
-				$@"    <DebugType>full</DebugType>",
-				$@"    <Optimize>false</Optimize>",
-				$@"    <OutputPath>{properties.OutputPath}</OutputPath>",
-				$@"    <DefineConstants>{string.Join(";", properties.Defines)}</DefineConstants>",
-				$@"    <ErrorReport>prompt</ErrorReport>",
-				$@"    <WarningLevel>4</WarningLevel>",
-				$@"    <NoWarn>0169</NoWarn>",
-				$@"    <AllowUnsafeBlocks>{properties.Unsafe}</AllowUnsafeBlocks>",
-				$@"  </PropertyGroup>",
-				$@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">",
-				$@"    <DebugType>pdbonly</DebugType>",
-				$@"    <Optimize>true</Optimize>",
-				$@"    <OutputPath>Temp\bin\Release\</OutputPath>",
-				$@"    <ErrorReport>prompt</ErrorReport>",
-				$@"    <WarningLevel>4</WarningLevel>",
-				$@"    <NoWarn>0169</NoWarn>",
-				$@"    <AllowUnsafeBlocks>{properties.Unsafe}</AllowUnsafeBlocks>",
-				$@"  </PropertyGroup>"
-			};
+			headerBuilder = new StringBuilder();
 
-			var forceExplicitReferences = new[]
-			{
-				$@"  <PropertyGroup>",
-				$@"    <NoConfig>true</NoConfig>",
-				$@"    <NoStdLib>true</NoStdLib>",
-				$@"    <AddAdditionalExplicitAssemblyReferences>false</AddAdditionalExplicitAssemblyReferences>",
-				$@"    <ImplicitlyExpandNETStandardFacades>false</ImplicitlyExpandNETStandardFacades>",
-				$@"    <ImplicitlyExpandDesignTimeFacades>false</ImplicitlyExpandDesignTimeFacades>",
-				$@"  </PropertyGroup>"
-			};
+			//Header
+			headerBuilder.Append(@"<?xml version=""1.0"" encoding=""utf-8""?>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"<Project ToolsVersion=""4.0"" DefaultTargets=""Build"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"">").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <LangVersion>").Append(properties.LangVersion).Append(@"</LangVersion>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <ProductVersion>10.0.20506</ProductVersion>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <SchemaVersion>2.0</SchemaVersion>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <RootNamespace>").Append(properties.RootNamespace).Append(@"</RootNamespace>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <ProjectGuid>{").Append(properties.ProjectGuid).Append(@"}</ProjectGuid>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <OutputType>Library</OutputType>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <AppDesignerFolder>Properties</AppDesignerFolder>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <AssemblyName>").Append(properties.AssemblyName).Append(@"</AssemblyName>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <FileAlignment>512</FileAlignment>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <BaseDirectory>.</BaseDirectory>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <DebugSymbols>true</DebugSymbols>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <DebugType>full</DebugType>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <Optimize>false</Optimize>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <OutputPath>").Append(properties.OutputPath).Append(@"</OutputPath>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <DefineConstants>").Append(string.Join(";", properties.Defines)).Append(@"</DefineConstants>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <NoWarn>0169</NoWarn>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <AllowUnsafeBlocks>").Append(properties.Unsafe).Append(@"</AllowUnsafeBlocks>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <DebugType>pdbonly</DebugType>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <Optimize>true</Optimize>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <OutputPath>Temp\bin\Release\</OutputPath>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <NoWarn>0169</NoWarn>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <AllowUnsafeBlocks>").Append(properties.Unsafe).Append(@"</AllowUnsafeBlocks>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 
-			var flavoring = new[]
-			{
-				$@"  <PropertyGroup>",
-				$@"    <ProjectTypeGuids>{{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1}};{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}</ProjectTypeGuids>",
-				$@"    <UnityProjectGenerator>Package</UnityProjectGenerator>",
-				$@"    <UnityProjectGeneratorVersion>{properties.FlavoringPackageVersion}</UnityProjectGeneratorVersion>",
-				$@"    <UnityProjectType>{properties.FlavoringProjectType}</UnityProjectType>",
-				$@"    <UnityBuildTarget>{properties.FlavoringBuildTarget}</UnityBuildTarget>",
-				$@"    <UnityVersion>{properties.FlavoringUnityVersion}</UnityVersion>",
-				$@"  </PropertyGroup>"
-			};
+			// Explicit references
+			headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <NoConfig>true</NoConfig>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <NoStdLib>true</NoStdLib>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <AddAdditionalExplicitAssemblyReferences>false</AddAdditionalExplicitAssemblyReferences>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <ImplicitlyExpandNETStandardFacades>false</ImplicitlyExpandNETStandardFacades>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <ImplicitlyExpandDesignTimeFacades>false</ImplicitlyExpandDesignTimeFacades>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 
-			var footer = new[]
-			{
-				@""
-			};
-
-			var lines = header
-				.Concat(forceExplicitReferences)
-				.Concat(flavoring)
-				.ToList();
+			// Flavoring
+			headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <ProjectTypeGuids>{E097FAD1-6243-4DAD-9C02-E9B9EFC3FFC1};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityProjectGenerator>Package</UnityProjectGenerator>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityProjectGeneratorVersion>").Append(properties.FlavoringPackageVersion).Append(@"</UnityProjectGeneratorVersion>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityProjectType>").Append(properties.FlavoringProjectType).Append(@"</UnityProjectType>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityBuildTarget>").Append(properties.FlavoringBuildTarget).Append(@"</UnityBuildTarget>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityVersion>").Append(properties.FlavoringUnityVersion).Append(@"</UnityVersion>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 
 			if (!string.IsNullOrEmpty(properties.RulesetPath))
 			{
-				lines.Add(@"  <PropertyGroup>");
-				lines.Add($"    <CodeAnalysisRuleSet>{properties.RulesetPath.MakeAbsolutePath().NormalizePathSeparators()}</CodeAnalysisRuleSet>");
-				lines.Add(@"  </PropertyGroup>");
+				headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+				headerBuilder.Append(@"    <CodeAnalysisRuleSet>").Append(properties.RulesetPath).Append(@"</CodeAnalysisRuleSet>").Append(k_WindowsNewline);
+				headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 			}
 
 			if (properties.Analyzers.Any())
 			{
-				lines.Add(@"  <ItemGroup>");
-				foreach (var analyzer in properties.Analyzers.Distinct())
+				headerBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+				foreach (var analyzer in properties.Analyzers)
 				{
-					lines.Add($@"    <Analyzer Include=""{analyzer.MakeAbsolutePath().NormalizePathSeparators()}"" />");
+					headerBuilder.Append(@"    <Analyzer Include=""").Append(analyzer).Append(@""" />").Append(k_WindowsNewline);
 				}
-				lines.Add(@"  </ItemGroup>");
+				headerBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
 			}
-
-			return string.Join(k_WindowsNewline, lines.Concat(footer));
 		}
 
 		private static string GetProjectFooter()
@@ -885,7 +923,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (array == null || array.Length == 0)
 			{
 				// HideSolution by default
-				array = new [] {
+				array = new[] {
 					new SolutionProperties() {
 						Name = "SolutionProperties",
 						Type = "preSolution",
