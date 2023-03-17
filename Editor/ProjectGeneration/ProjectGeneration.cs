@@ -664,33 +664,50 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			}
 		}
 
-		private string[] GetAnalyzers(Assembly assembly, ResponseFileData[] responseFilesData, out string rulesetPath)
+		private void SetAnalyzerAndSourceGeneratorProperties(Assembly assembly, ResponseFileData[] responseFilesData, ProjectProperties properties)
 		{
-			rulesetPath = null;
-			
 			if (m_CurrentInstallation == null || !m_CurrentInstallation.SupportsAnalyzers)
-				return Array.Empty<string>();
-			
+				return;
+
 			// Analyzers provided by VisualStudio
-			List<string> analyzers = new List<string>(m_CurrentInstallation.GetAnalyzers());
+			var analyzers = new List<string>(m_CurrentInstallation.GetAnalyzers());
+			var additionalFilePaths = new List<string>();
+			var rulesetPath = string.Empty;
+			var analyzerConfigPath = string.Empty;
 
 #if UNITY_2020_2_OR_NEWER
 			// Analyzers + ruleset provided by Unity
 			analyzers.AddRange(assembly.compilerOptions.RoslynAnalyzerDllPaths);
-
-			rulesetPath = assembly
-				.compilerOptions
-				.RoslynAnalyzerRulesetPath
-				.MakeAbsolutePath()
-				.NormalizePathSeparators();
+			rulesetPath = assembly.compilerOptions.RoslynAnalyzerRulesetPath;
 #endif
 
-			// Analyzers provided by csc.rsp
-			analyzers.AddRange(GetOtherArguments(responseFilesData, new HashSet<string>(new[] { "analyzer", "a" })));
+#if UNITY_2021_3_OR_NEWER && !UNITY_2022_1 // we have support in 2021.3, 2022.2 but without a backport in 2022.1
+			additionalFilePaths.AddRange(assembly.compilerOptions.RoslynAdditionalFilePaths);
+			analyzerConfigPath = assembly.compilerOptions.AnalyzerConfigPath;
+#endif
 
-			return analyzers
+			// Analyzers and additional files provided by csc.rsp
+			analyzers.AddRange(GetOtherArguments(responseFilesData, new HashSet<string>(new[] { "analyzer", "a" })));
+			additionalFilePaths.AddRange(GetOtherArguments(responseFilesData, new HashSet<string>(new[] { "additionalfile" })));
+
+			properties.RulesetPath = ToNormalizedPath(rulesetPath);
+			properties.Analyzers = ToNormalizedPaths(analyzers);
+			properties.AnalyzerConfigPath = ToNormalizedPath(analyzerConfigPath);
+			properties.AdditionalFilePaths = ToNormalizedPaths(additionalFilePaths);
+		}
+
+		private string ToNormalizedPath(string path)
+		{
+			return path
+				.MakeAbsolutePath()
+				.NormalizePathSeparators();
+		}
+
+		private string[] ToNormalizedPaths(IEnumerable<string> values)
+		{
+			return values
 				.Where(a => !string.IsNullOrEmpty(a))
-				.Select(a => a.MakeAbsolutePath().NormalizePathSeparators())
+				.Select(a => ToNormalizedPath(a))
 				.Distinct()
 				.ToArray();
 		}
@@ -702,7 +719,6 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		)
 		{
 			var projectType = ProjectTypeOf(assembly.name);
-			var analyzers = GetAnalyzers(assembly, responseFilesData, out var rulesetPath);
 
 			var projectProperties = new ProjectProperties
 			{
@@ -711,10 +727,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				AssemblyName = assembly.name,
 				RootNamespace = GetRootNamespace(assembly),
 				OutputPath = assembly.outputPath,
-				// Analyzers
-				RulesetPath = rulesetPath,
 				// RSP alterable
-				Analyzers = analyzers,
 				Defines = assembly.defines.Concat(responseFilesData.SelectMany(x => x.Defines)).Distinct().ToArray(),
 				Unsafe = assembly.compilerOptions.AllowUnsafeCode | responseFilesData.Any(x => x.Unsafe),
 				// VSTU Flavoring
@@ -723,6 +736,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				FlavoringUnityVersion = Application.unityVersion,
 				FlavoringPackageVersion = VisualStudioIntegration.PackageVersion(),
 			};
+
+			SetAnalyzerAndSourceGeneratorProperties(assembly, responseFilesData, projectProperties);
 
 			GetProjectHeader(projectProperties, out headerBuilder);
 		}
@@ -827,6 +842,23 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				foreach (var analyzer in properties.Analyzers)
 				{
 					headerBuilder.Append(@"    <Analyzer Include=""").Append(analyzer).Append(@""" />").Append(k_WindowsNewline);
+				}
+				headerBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+			}
+
+			if (!string.IsNullOrEmpty(properties.AnalyzerConfigPath))
+			{
+				headerBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+				headerBuilder.Append(@"    <EditorConfigFiles Include=""").Append(properties.AnalyzerConfigPath).Append(@""" />").Append(k_WindowsNewline);
+				headerBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+			}
+
+			if (properties.AdditionalFilePaths.Any())
+			{
+				headerBuilder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
+				foreach (var additionalFile in properties.AdditionalFilePaths)
+				{
+					headerBuilder.Append(@"    <AdditionalFiles Include=""").Append(additionalFile).Append(@""" />").Append(k_WindowsNewline);
 				}
 				headerBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
 			}

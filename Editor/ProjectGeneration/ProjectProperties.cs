@@ -13,6 +13,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		// Analyzers
 		public string[] Analyzers { get; set; } = Array.Empty<string>();
 		public string RulesetPath { get; set; } = string.Empty;
+		public string AnalyzerConfigPath { get; set; } = string.Empty;
+		// Source generators
+		public string[] AdditionalFilePaths { get; set; } = Array.Empty<string>();
 
 		// RSP alterable
 		public string[] Defines { get; set; } = Array.Empty<string>();

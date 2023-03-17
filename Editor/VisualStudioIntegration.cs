@@ -22,7 +22,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		class Client
 		{
 			public IPEndPoint EndPoint { get; set; }
-			public DateTime LastMessage { get; set; }
+			public double LastMessage { get; set; }
 		}
 
 		private static Messager _messager;
@@ -141,7 +141,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			{
 				foreach (var client in _clients.Values.ToArray())
 				{
-					if (DateTime.Now.Subtract(client.LastMessage) > TimeSpan.FromMilliseconds(4000))
+					// EditorApplication.timeSinceStartup: The time since the editor was started, in seconds, not reset when starting play mode.
+					if (EditorApplication.timeSinceStartup - client.LastMessage > 4)
 						_clients.Remove(client.EndPoint);
 				}
 			}
@@ -216,14 +217,14 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				client = new Client
 				{
 					EndPoint = endPoint,
-					LastMessage = DateTime.Now
+					LastMessage = EditorApplication.timeSinceStartup
 				};
 
 				_clients.Add(endPoint, client);
 			}
 			else
 			{
-				client.LastMessage = DateTime.Now;
+				client.LastMessage = EditorApplication.timeSinceStartup;
 			}
 		}
 
