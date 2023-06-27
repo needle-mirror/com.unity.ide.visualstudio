@@ -6,6 +6,7 @@
 using System;
 using System.Diagnostics;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Microsoft.Unity.VisualStudio.Editor
@@ -21,17 +22,32 @@ namespace Microsoft.Unity.VisualStudio.Editor
 	{
 		public const int DefaultTimeoutInMilliseconds = 300000;
 
-		public static ProcessStartInfo ProcessStartInfoFor(string filename, string arguments)
+		public static ProcessStartInfo ProcessStartInfoFor(string filename, string arguments, bool redirect = true, bool shell = false)
 		{
 			return new ProcessStartInfo
 			{
-				UseShellExecute = false,
+				UseShellExecute = shell,
 				CreateNoWindow = true, 
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
+				RedirectStandardOutput = redirect,
+				RedirectStandardError = redirect,
 				FileName = filename,
 				Arguments = arguments
 			};
+		}
+
+		public static void Start(string filename, string arguments)
+		{
+			Start(ProcessStartInfoFor(filename, arguments, false));
+		}
+
+		public static void Start(ProcessStartInfo processStartInfo)
+		{
+			var process = new Process { StartInfo = processStartInfo };
+
+			using (process)
+			{
+				process.Start();
+			}
 		}
 
 		public static ProcessRunnerResult StartAndWaitForExit(string filename, string arguments, int timeoutms = DefaultTimeoutInMilliseconds, Action<string> onOutputReceived = null)

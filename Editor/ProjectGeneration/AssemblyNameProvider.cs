@@ -42,6 +42,12 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public ProjectGenerationFlag ProjectGenerationFlag
 		{
+			get { return ProjectGenerationFlagImpl; }
+			private set { ProjectGenerationFlagImpl = value;}
+		}
+
+		internal virtual ProjectGenerationFlag ProjectGenerationFlagImpl
+		{
 			get => m_ProjectGenerationFlag;
 			private set
 			{

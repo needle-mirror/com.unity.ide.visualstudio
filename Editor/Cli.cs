@@ -23,7 +23,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		internal static void GenerateSolutionWith(VisualStudioEditor vse, string installationPath)
 		{
-			if (vse != null && vse.TryGetVisualStudioInstallationForPath(installationPath, searchInstallations: true, out var vsi))
+			if (vse != null && vse.TryGetVisualStudioInstallationForPath(installationPath, lookupDiscoveredInstallations: true, out var vsi))
 			{
 				Log($"Using {GetInstallationDetails(vsi)}");
 				vse.SyncAll();

@@ -7,7 +7,7 @@
 				"Targets": "+",
 				"Files":
 				[
-					"Editor/Discovery.cs"
+					"Editor/VisualStudioForWindowsInstallation.cs"
 				],
 				"Patterns":
 				[
