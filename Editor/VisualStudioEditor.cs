@@ -55,6 +55,12 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (editor is VisualStudioEditor)
 				return;
 
+			// only disable the com.unity.ide.vscode package
+			var assembly = editor.GetType().Assembly;
+			var assemblyName = assembly.GetName().Name;
+			if (assemblyName != "Unity.VSCode.Editor")
+				return;
+
 			CodeEditor.Unregister(editor);
 		}
 #endif

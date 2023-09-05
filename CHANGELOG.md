@@ -1,24 +1,33 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.21] - 2023-09-05
+
+Integration:
+
+- Only disable the legacy `com.unity.ide.vscode` package going forward.
+- Fix json parsing issues with specific non-UTF code pages.
+
+Project generation:
+
+- Target `netstandard2.1` instead of `netstandard2.0`.
+- Set `defaultSolution` in `settings.json`.
+- Remove `files.exclude` entries for root `csproj` and `sln` files in `settings.json` when needed.
+- Add `vstuc` launch configuration to `launch.json` when needed.
+- Add `visualstudiotoolsforunity.vstuc` entry to `extensions.json` when needed.
+- You can prevent the package from patching those configuration files by creating a `.vscode/.vstupatchdisable` file.
+
+
 ## [2.0.20] - 2023-06-27
 
 Integration:
 
 - Internal API refactoring.
-
-
-
-## [2.0.19] - 2023-06-14
-
-Integration:
-
 - Add support for Visual Studio Code.
- 
+
 Project generation:
 
-- Add support for Sdk Style poject generation.
+- Add support for Sdk Style project generation.
 - Fix an issue related to missing properties with 2021.3.
-
 
 ## [2.0.18] - 2023-03-17
 

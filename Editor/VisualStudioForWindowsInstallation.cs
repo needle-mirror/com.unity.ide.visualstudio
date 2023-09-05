@@ -228,7 +228,24 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			if (string.IsNullOrWhiteSpace(progpath))
 				return Enumerable.Empty<VisualStudioInstallation>();
 
-			var result = ProcessRunner.StartAndWaitForExit(progpath, "-prerelease -format json -utf8");
+			const string arguments = "-prerelease -format json";
+
+			// We've seen issues with json parsing in utf8 mode and with specific non-UTF code pages like 949 (Korea)
+			// So try with utf8 first, then fallback to non utf8 in case of an issue
+			// See https://github.com/microsoft/vswhere/issues/264
+			try
+			{
+				return QueryVsWhere(progpath, $"{arguments} -utf8");
+			}
+			catch
+			{
+				return QueryVsWhere(progpath, $"{arguments}");
+			}
+		}
+
+		private static IEnumerable<VisualStudioInstallation> QueryVsWhere(string progpath, string arguments)
+		{
+			var result = ProcessRunner.StartAndWaitForExit(progpath, arguments);
 
 			if (!result.Success)
 				throw new Exception($"Failure while running vswhere: {result.Error}");

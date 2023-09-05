@@ -46,9 +46,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			headerBuilder.Append(@"    <AppDesignerFolder>Properties</AppDesignerFolder>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <AssemblyName>").Append(properties.AssemblyName).Append(@"</AssemblyName>").Append(k_WindowsNewline);
 			// In the end, given we use NoConfig/NoStdLib (see below), hardcoding the target framework version will have no impact, even when targeting netstandard/net48 from Unity.
-			// But with SDK style we use netstandard2.0 (net471 for legacy), so 3rd party tools will not fail to work when .NETFW reference assemblies are not installed.
+			// But with SDK style we use netstandard2.1 (net471 for legacy), so 3rd party tools will not fail to work when .NETFW reference assemblies are not installed.
 			// Unity already selected proper API surface through referenced DLLs for us.
-			headerBuilder.Append(@"    <TargetFramework>netstandard2.0</TargetFramework>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <TargetFramework>netstandard2.1</TargetFramework>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <BaseDirectory>.</BaseDirectory>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 
