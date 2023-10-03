@@ -3,6 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+#if UNITY_EDITOR_OSX
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -101,7 +103,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private static bool IsCandidateForDiscovery(string path)
 		{
-			return Directory.Exists(path) && VisualStudioEditor.IsOSX && Regex.IsMatch(path, "Visual\\s?Studio(?!.*Code.*).*.app$", RegexOptions.IgnoreCase);
+			return Directory.Exists(path) && Regex.IsMatch(path, "Visual\\s?Studio(?!.*Code.*).*.app$", RegexOptions.IgnoreCase);
 		}
 
 		public static bool TryDiscoverInstallation(string editorPath, out IVisualStudioInstallation installation)
@@ -144,9 +146,6 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public static IEnumerable<IVisualStudioInstallation> GetVisualStudioInstallations()
 		{
-			if (!VisualStudioEditor.IsOSX)
-				yield break;
-
 			var candidates = Directory.EnumerateDirectories("/Applications", "*.app");
 			foreach (var candidate in candidates)
 			{
@@ -178,3 +177,5 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		}
 	}
 }
+
+#endif

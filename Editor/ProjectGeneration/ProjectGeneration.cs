@@ -87,6 +87,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			SetupProjectSupportedExtensions();
 		}
 
+		internal virtual string StyleName => "";
+
 		/// <summary>
 		/// Syncs the scripting solution if any affected files are relevant.
 		/// </summary>
@@ -586,6 +588,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			var escapedFullPath = EscapedRelativePathFor(fullReference, out _);
 			projectBuilder.Append(@"    <Reference Include=""").Append(Path.GetFileNameWithoutExtension(escapedFullPath)).Append(@""">").Append(k_WindowsNewline);
 			projectBuilder.Append("      <HintPath>").Append(escapedFullPath).Append("</HintPath>").Append(k_WindowsNewline);
+			projectBuilder.Append("      <Private>False</Private>").Append(k_WindowsNewline);
 			projectBuilder.Append("    </Reference>").Append(k_WindowsNewline);
 		}
 
@@ -594,7 +597,11 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return Path.Combine(ProjectDirectory, $"{m_AssemblyNameProvider.GetAssemblyName(assembly.outputPath, assembly.name)}.csproj");
 		}
 
-		private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;" + (VisualStudioEditor.IsWindows ? "" : "|:"));
+#if UNITY_EDITOR_WIN
+		private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;", RegexOptions.Compiled);
+#else
+		private static readonly Regex InvalidCharactersRegexPattern = new Regex(@"\?|&|\*|""|<|>|\||#|%|\^|;|:", RegexOptions.Compiled);
+#endif
 
 		public string SolutionFile()
 		{
@@ -763,6 +770,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		internal static void GetProjectHeaderConfigurations(ProjectProperties properties, StringBuilder headerBuilder)
 		{
+			const string NoWarn = "0169;USG0001";
+
 			headerBuilder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <DebugSymbols>true</DebugSymbols>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <DebugType>full</DebugType>").Append(k_WindowsNewline);
@@ -771,16 +780,16 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			headerBuilder.Append(@"    <DefineConstants>").Append(string.Join(";", properties.Defines)).Append(@"</DefineConstants>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <NoWarn>0169</NoWarn>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <NoWarn>").Append(NoWarn).Append("</NoWarn>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <AllowUnsafeBlocks>").Append(properties.Unsafe).Append(@"</AllowUnsafeBlocks>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <DebugType>pdbonly</DebugType>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <Optimize>true</Optimize>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <OutputPath>Temp\bin\Release\</OutputPath>").Append(k_WindowsNewline);
+			headerBuilder.Append($"    <OutputPath>{@"Temp\bin\Release\".NormalizePathSeparators()}</OutputPath>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <NoWarn>0169</NoWarn>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <NoWarn>").Append(NoWarn).Append("</NoWarn>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <AllowUnsafeBlocks>").Append(properties.Unsafe).Append(@"</AllowUnsafeBlocks>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 		}
@@ -822,7 +831,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			}
 		}
 
-		internal static void GetProjectHeaderVstuFlavoring(ProjectProperties properties, StringBuilder headerBuilder, bool includeProjectTypeGuids = true)
+		internal void GetProjectHeaderVstuFlavoring(ProjectProperties properties, StringBuilder headerBuilder, bool includeProjectTypeGuids = true)
 		{
 			// Flavoring
 			headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
@@ -834,6 +843,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 			headerBuilder.Append(@"    <UnityProjectGenerator>Package</UnityProjectGenerator>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <UnityProjectGeneratorVersion>").Append(properties.FlavoringPackageVersion).Append(@"</UnityProjectGeneratorVersion>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityProjectGeneratorStyle>").Append(StyleName).Append("</UnityProjectGeneratorStyle>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <UnityProjectType>").Append(properties.FlavoringProjectType).Append(@"</UnityProjectType>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <UnityBuildTarget>").Append(properties.FlavoringBuildTarget).Append(@"</UnityBuildTarget>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <UnityVersion>").Append(properties.FlavoringUnityVersion).Append(@"</UnityVersion>").Append(k_WindowsNewline);

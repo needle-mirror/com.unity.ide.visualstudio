@@ -1,5 +1,20 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.22] - 2023-10-03
+
+Integration:
+
+- Add support for `XDG_DATA_DIRS` and `.desktop` files on Linux for `VS Code` discovery.
+- Use compile-time platform-specifics instead of using runtime conditions.
+
+Project generation:
+
+- Suppress `USG0001` warnings.
+- Mark referenced assemblies as private (to not copy extra files to output directory when building).
+- Add Unity capability to SDK-Style projects.
+- Prevent circular dependency errors with SDK-Style projects.
+
+
 ## [2.0.21] - 2023-09-05
 
 Integration:
@@ -15,7 +30,6 @@ Project generation:
 - Add `vstuc` launch configuration to `launch.json` when needed.
 - Add `visualstudiotoolsforunity.vstuc` entry to `extensions.json` when needed.
 - You can prevent the package from patching those configuration files by creating a `.vscode/.vstupatchdisable` file.
-
 
 ## [2.0.20] - 2023-06-27
 
@@ -148,7 +162,7 @@ Documentation:
 
 Integration:
 
-- Remove com.unity.nuget.newtonsoft-json dependency in favor of the built-in JsonUtility for the VS Test Runner.
+- Remove `com.unity.nuget.newtonsoft-json` dependency in favor of the built-in JsonUtility for the VS Test Runner.
 
 ## [2.0.6] - 2021-01-20
 
@@ -186,7 +200,7 @@ Integration:
 Project generation:
 
 - Added C#8 language support.
-- Added UnityProjectGeneratorVersion property.
+- Added `UnityProjectGeneratorVersion` property.
 - Local and Embedded packages are now selected by default for generation.
 - Added support for asmdef root namespace.
 
@@ -208,7 +222,7 @@ Integration:
 ## [2.0.1] - 2020-03-19
 
 - When Visual Studio installation is compatible with C# 8.0, setup the language version to not prompt the user with unsupported constructs. (So far Unity only supports C# 7.3).
-- Use Unity's TypeCache to improve project generation speed.
+- Use Unity's `TypeCache` to improve project generation speed.
 - Properly check for a managed assembly before displaying a warning regarding legacy PDB usage.
 - Add support for selective project generation (embedded, local, registry, git, builtin, player).
 
@@ -258,8 +272,8 @@ Integration:
 
 ## [1.0.4] - 2019-04-12
 
-- Fixing null reference issue for callbacks to AssetPostProcessor.
-- Ensure Path.GetFullPath does not get an empty string.
+- Fixing null reference issue for callbacks to `AssetPostProcessor`.
+- Ensure `Path.GetFullPath` does not get an empty string.
 
 ## [1.0.3] - 2019-01-01
 

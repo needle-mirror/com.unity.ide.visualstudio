@@ -3,6 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+#if UNITY_EDITOR_WIN
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -126,7 +128,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private static bool IsCandidateForDiscovery(string path)
 		{
-			return File.Exists(path) && VisualStudioEditor.IsWindows && Regex.IsMatch(path, "devenv.exe$", RegexOptions.IgnoreCase);
+			return File.Exists(path) && Regex.IsMatch(path, "devenv.exe$", RegexOptions.IgnoreCase);
 		}
 
 		public static bool TryDiscoverInstallation(string editorPath, out IVisualStudioInstallation installation)
@@ -169,9 +171,6 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public static IEnumerable<IVisualStudioInstallation> GetVisualStudioInstallations()
 		{
-			if (!VisualStudioEditor.IsWindows)
-				yield break;
-
 			foreach (var installation in QueryVsWhere())
 				yield return installation;
 		}
@@ -373,8 +372,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public static void Initialize()
 		{
-			if (VisualStudioEditor.IsWindows)
-				_vsWherePath = FileUtility.GetPackageAssetFullPath("Editor", "VSWhere", "vswhere.exe");
+			_vsWherePath = FileUtility.GetPackageAssetFullPath("Editor", "VSWhere", "vswhere.exe");
 		}
 	}
 }
+
+#endif

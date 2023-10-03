@@ -27,9 +27,7 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 
 		private void SetIOControl()
 		{
-			if (!VisualStudioEditor.IsWindows)
-				return;
-
+#if UNITY_EDITOR_WIN
 			try
 			{
 				const int SIO_UDP_CONNRESET = -1744830452;
@@ -40,6 +38,7 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 			{
 				// fallback
 			}
+#endif
 		}
 
 		public static byte[] BufferFor(IAsyncResult result)

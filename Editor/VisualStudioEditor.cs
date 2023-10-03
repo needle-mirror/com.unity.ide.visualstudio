@@ -21,9 +21,6 @@ namespace Microsoft.Unity.VisualStudio.Editor
 	[InitializeOnLoad]
 	public class VisualStudioEditor : IExternalCodeEditor
 	{
-		internal static bool IsOSX => Application.platform == RuntimePlatform.OSXEditor;
-		internal static bool IsWindows => !IsOSX && Path.DirectorySeparatorChar == FileUtility.WinSeparator && Environment.NewLine == "\r\n";
-
 		CodeEditor.Installation[] IExternalCodeEditor.Installations => _discoverInstallations
 			.Result
 			.Values

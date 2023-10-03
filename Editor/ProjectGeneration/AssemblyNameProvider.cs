@@ -61,15 +61,18 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return CompilationPipeline.GetAssemblyNameFromScriptPath(path);
 		}
 
+		internal static readonly string AssemblyOutput = @"Temp\bin\Debug\".NormalizePathSeparators();
+		internal static readonly string PlayerAssemblyOutput = @"Temp\bin\Debug\Player\".NormalizePathSeparators();
+
 		public IEnumerable<Assembly> GetAssemblies(Func<string, bool> shouldFileBePartOfSolution)
 		{
-			IEnumerable<Assembly> assemblies = GetAssembliesByType(AssembliesType.Editor, shouldFileBePartOfSolution, @"Temp\Bin\Debug\");
+			IEnumerable<Assembly> assemblies = GetAssembliesByType(AssembliesType.Editor, shouldFileBePartOfSolution, AssemblyOutput);
 
 			if (!ProjectGenerationFlag.HasFlag(ProjectGenerationFlag.PlayerAssemblies))
 			{
 				return assemblies;
 			}
-			var playerAssemblies = GetAssembliesByType(AssembliesType.Player, shouldFileBePartOfSolution, @"Temp\Bin\Debug\Player\");
+			var playerAssemblies = GetAssembliesByType(AssembliesType.Player, shouldFileBePartOfSolution, PlayerAssemblyOutput);
 			return assemblies.Concat(playerAssemblies);
 		}
 
@@ -98,7 +101,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public string GetCompileOutputPath(string assemblyName)
 		{
-			return assemblyName.EndsWith(".Player", StringComparison.Ordinal) ? @"Temp\Bin\Debug\Player\" : @"Temp\Bin\Debug\";
+			// We need to keep this one for API surface check (AssemblyNameProvider is public), but not used anymore
+			throw new NotImplementedException();
 		}
 
 		public IEnumerable<string> GetAllAssetPaths()
@@ -207,7 +211,10 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public string GetAssemblyName(string assemblyOutputPath, string assemblyName)
 		{
-			return assemblyOutputPath.EndsWith(@"\Player\", StringComparison.Ordinal) ? assemblyName + ".Player" : assemblyName;
+			if (assemblyOutputPath == PlayerAssemblyOutput)
+				return assemblyName + ".Player";
+
+			return assemblyName;
 		}
 	}
 }

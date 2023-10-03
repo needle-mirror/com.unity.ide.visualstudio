@@ -106,10 +106,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private static void RunOnShutdown(Action action)
 		{
 			// Mono on OSX has all kinds of quirks on AppDomain shutdown
-			if (!VisualStudioEditor.IsWindows)
-				return;
-
+#if UNITY_EDITOR_WIN
 			AppDomain.CurrentDomain.DomainUnload += (_, __) => action();
+#endif
 		}
 
 		private static int DebuggingPort()
