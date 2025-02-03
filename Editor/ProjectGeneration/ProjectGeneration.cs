@@ -7,7 +7,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using SR = System.Reflection;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
@@ -60,6 +59,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		HashSet<string> m_ProjectSupportedExtensions = new HashSet<string>();
 		HashSet<string> m_BuiltinSupportedExtensions = new HashSet<string>();
+		HashSet<string> m_DefaultSupportedExtensions = new HashSet<string>(new string[] { "dll", "asmdef", "additionalfile" });
 
 		readonly string m_ProjectName;
 		internal readonly IAssemblyNameProvider m_AssemblyNameProvider;
@@ -87,7 +87,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			SetupProjectSupportedExtensions();
 		}
 
-		internal virtual string StyleName => "";
+		internal virtual GeneratorStyle Style => GeneratorStyle.Legacy;
 
 		/// <summary>
 		/// Syncs the scripting solution if any affected files are relevant.
@@ -240,10 +240,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			extensionWithoutDot = GetExtensionWithoutDot(path);
 
 			// Dll's are not scripts but still need to be included
-			if (extensionWithoutDot == "dll")
-				return true;
-
-			if (extensionWithoutDot == "asmdef")
+			if (m_DefaultSupportedExtensions.Contains(extensionWithoutDot))
 				return true;
 
 			if (m_BuiltinSupportedExtensions.Contains(extensionWithoutDot))
@@ -416,18 +413,9 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			SyncFileIfNotChanged(path, newContents);
 		}
 
-		private static IEnumerable<SR.MethodInfo> GetPostProcessorCallbacks(string name)
-		{
-			return TypeCache
-				.GetTypesDerivedFrom<AssetPostprocessor>()
-				.Where(t => t.Assembly.GetName().Name != KnownAssemblies.Bridge) // never call into the bridge if loaded with the package
-				.Select(t => t.GetMethod(name, SR.BindingFlags.Public | SR.BindingFlags.NonPublic | SR.BindingFlags.Static))
-				.Where(m => m != null);
-		}
-
 		static void OnGeneratedCSProjectFiles()
 		{
-			foreach (var method in GetPostProcessorCallbacks(nameof(OnGeneratedCSProjectFiles)))
+			foreach (var method in TypeCacheHelper.GetPostProcessorCallbacks(nameof(OnGeneratedCSProjectFiles)))
 			{
 				method.Invoke(null, Array.Empty<object>());
 			}
@@ -437,7 +425,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		{
 			bool result = false;
 
-			foreach (var method in GetPostProcessorCallbacks(nameof(OnPreGeneratingCSProjectFiles)))
+			foreach (var method in TypeCacheHelper.GetPostProcessorCallbacks(nameof(OnPreGeneratingCSProjectFiles)))
 			{
 				var retValue = method.Invoke(null, Array.Empty<object>());
 				if (method.ReturnType == typeof(bool))
@@ -451,7 +439,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		private static string InvokeAssetPostProcessorGenerationCallbacks(string name, string path, string content)
 		{
-			foreach (var method in GetPostProcessorCallbacks(name))
+			foreach (var method in TypeCacheHelper.GetPostProcessorCallbacks(name))
 			{
 				var args = new[] { path, content };
 				var returnValue = method.Invoke(null, args);
@@ -768,28 +756,13 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			headerBuilder = default;
 		}
 
-		internal static void GetProjectHeaderConfigurations(ProjectProperties properties, StringBuilder headerBuilder)
+		internal void GetProjectHeaderProperties(ProjectProperties properties, StringBuilder headerBuilder)
 		{
 			const string NoWarn = "0169;USG0001";
 
-			headerBuilder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <DebugSymbols>true</DebugSymbols>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <DebugType>full</DebugType>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <Optimize>false</Optimize>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <OutputPath>").Append(properties.OutputPath).Append(@"</OutputPath>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <NoWarn>").Append(NoWarn).Append("</NoWarn>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <DefineConstants>").Append(string.Join(";", properties.Defines)).Append(@"</DefineConstants>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <NoWarn>").Append(NoWarn).Append("</NoWarn>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <AllowUnsafeBlocks>").Append(properties.Unsafe).Append(@"</AllowUnsafeBlocks>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <DebugType>pdbonly</DebugType>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <Optimize>true</Optimize>").Append(k_WindowsNewline);
-			headerBuilder.Append($"    <OutputPath>{@"Temp\bin\Release\".NormalizePathSeparators()}</OutputPath>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <NoWarn>").Append(NoWarn).Append("</NoWarn>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <AllowUnsafeBlocks>").Append(properties.Unsafe).Append(@"</AllowUnsafeBlocks>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 		}
@@ -843,7 +816,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 			headerBuilder.Append(@"    <UnityProjectGenerator>Package</UnityProjectGenerator>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <UnityProjectGeneratorVersion>").Append(properties.FlavoringPackageVersion).Append(@"</UnityProjectGeneratorVersion>").Append(k_WindowsNewline);
-			headerBuilder.Append(@"    <UnityProjectGeneratorStyle>").Append(StyleName).Append("</UnityProjectGeneratorStyle>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <UnityProjectGeneratorStyle>").Append(Style).Append("</UnityProjectGeneratorStyle>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <UnityProjectType>").Append(properties.FlavoringProjectType).Append(@"</UnityProjectType>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <UnityBuildTarget>").Append(properties.FlavoringBuildTarget).Append(@"</UnityBuildTarget>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"    <UnityVersion>").Append(properties.FlavoringUnityVersion).Append(@"</UnityVersion>").Append(k_WindowsNewline);

@@ -31,7 +31,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			new VersionPair(8,0, /* => */ 7,3),
 		};
 
-		private static readonly IGenerator _generator = new LegacyStyleProjectGeneration();
+		private static readonly IGenerator _generator = GeneratorFactory.GetInstance(GeneratorStyle.Legacy);
 
 		public override bool SupportsAnalyzers
 		{

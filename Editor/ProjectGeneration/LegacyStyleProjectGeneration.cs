@@ -12,7 +12,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 	internal class LegacyStyleProjectGeneration : ProjectGeneration
 	{
-		internal override string StyleName => "Legacy";
+		internal override GeneratorStyle Style => GeneratorStyle.Legacy;
 
 		public LegacyStyleProjectGeneration(string tempDirectory, IAssemblyNameProvider assemblyNameProvider, IFileIO fileIoProvider, IGUIDGenerator guidGenerator) : base(tempDirectory, assemblyNameProvider, fileIoProvider, guidGenerator)
 		{
@@ -55,6 +55,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			headerBuilder.Append(@"    <BaseDirectory>.</BaseDirectory>").Append(k_WindowsNewline);
 			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 
+			GetProjectHeaderProperties(properties, headerBuilder);
 			GetProjectHeaderConfigurations(properties, headerBuilder);
 
 			// Explicit references
@@ -68,6 +69,25 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 			GetProjectHeaderVstuFlavoring(properties, headerBuilder);
 			GetProjectHeaderAnalyzers(properties, headerBuilder);
+		}
+
+		internal static void GetProjectHeaderConfigurations(ProjectProperties properties, StringBuilder headerBuilder)
+		{
+			headerBuilder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <DebugSymbols>true</DebugSymbols>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <DebugType>full</DebugType>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <Optimize>false</Optimize>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <OutputPath>").Append(properties.OutputPath).Append(@"</OutputPath>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "">").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <DebugType>pdbonly</DebugType>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <Optimize>true</Optimize>").Append(k_WindowsNewline);
+			headerBuilder.Append($"    <OutputPath>{@"Temp\bin\Release\".NormalizePathSeparators()}</OutputPath>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
+			headerBuilder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
 		}
 
 		internal override void AppendProjectReference(Assembly assembly, Assembly reference, StringBuilder projectBuilder)

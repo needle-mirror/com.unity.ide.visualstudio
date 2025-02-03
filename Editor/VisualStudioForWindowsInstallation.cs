@@ -27,8 +27,10 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		private static readonly VersionPair[] WindowsVersionTable =
 		{
 			// VisualStudio 2022
-			new VersionPair(17,4, /* => */ 11,0),
-			new VersionPair(17,0, /* => */ 10,0),
+			new VersionPair(17,12, /* => */ 13,0),
+			new VersionPair(17, 8, /* => */ 12,0),
+			new VersionPair(17, 4, /* => */ 11,0),
+			new VersionPair(17, 0, /* => */ 10,0),
 
 			// VisualStudio 2019
 			new VersionPair(16,8, /* => */ 9,0),
@@ -42,7 +44,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		};
 
 		private static string _vsWherePath = null;
-		private static readonly IGenerator _generator = new LegacyStyleProjectGeneration();
+		private static readonly IGenerator _generator = GeneratorFactory.GetInstance(GeneratorStyle.Legacy);
 
 		public override bool SupportsAnalyzers
 		{

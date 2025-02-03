@@ -232,6 +232,12 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			return installation.Open(path, line, column, solution);
 		}
 
+		private static bool OpenFromInstallation(IVisualStudioInstallation installation, string path, int line, int column)
+		{
+			var solution = installation.ProjectGenerator.SolutionFile();
+			return installation.Open(path, line, column, solution);
+		}
+
 		private static string GetProjectGenerationFlagDescription(ProjectGenerationFlag flag)
 		{
 			switch (flag)

@@ -1,5 +1,19 @@
 # Code Editor Package for Visual Studio
 
+## [2.0.23] - 2025-02-03
+
+Integration:
+
+- Monitor `additionalfile` extension by default.
+- Try opening a Visual Studio Code workspace if there's one (`.code-workspace` file in the Unity project).
+
+Project generation:
+
+- Identify `asset`, `meta`, `prefab` and `unity` files as `yaml` (Visual Studio Code).
+- Add `sln`/`csproj` file nesting (Visual Studio Code).
+- Improve SDK style project generation.
+
+
 ## [2.0.22] - 2023-10-03
 
 Integration:
@@ -13,7 +27,6 @@ Project generation:
 - Mark referenced assemblies as private (to not copy extra files to output directory when building).
 - Add Unity capability to SDK-Style projects.
 - Prevent circular dependency errors with SDK-Style projects.
-
 
 ## [2.0.21] - 2023-09-05
 

@@ -2,25 +2,25 @@
   "name": "com.unity.ide.visualstudio",
   "displayName": "Visual Studio Editor",
   "description": "Code editor integration for supporting Visual Studio as code editor for unity. Adds support for generating csproj files for intellisense purposes, auto discovery of installations, etc.",
-  "version": "2.0.22",
+  "version": "2.0.23",
   "unity": "2019.4",
   "unityRelease": "25f1",
   "dependencies": {
     "com.unity.test-framework": "1.1.9"
   },
   "relatedPackages": {
-    "com.unity.ide.visualstudio.tests": "2.0.22"
+    "com.unity.ide.visualstudio.tests": "2.0.23"
   },
   "_upm": {
-    "changelog": "Integration:\n\n- Add support for `XDG_DATA_DIRS` and `.desktop` files on Linux for `VS Code` discovery.\n- Use compile-time platform-specifics instead of using runtime conditions.\n\nProject generation:\n\n- Suppress `USG0001` warnings.\n- Mark referenced assemblies as private (to not copy extra files to output directory when building).\n- Add Unity capability to SDK-Style projects.\n- Prevent circular dependency errors with SDK-Style projects."
+    "changelog": "Integration:\n\n- Monitor `additionalfile` extension by default.\n- Try opening a Visual Studio Code workspace if there's one (`.code-workspace` file in the Unity project).\n\nProject generation:\n\n- Identify `asset`, `meta`, `prefab` and `unity` files as `yaml` (Visual Studio Code).\n- Add `sln`/`csproj` file nesting (Visual Studio Code).\n- Improve SDK style project generation."
   },
   "upmCi": {
-    "footprint": "0b7347d4363afca9be389b61f0e25489ae3995b8"
+    "footprint": "74a5df56c8eb360db167269a677bc8e15ff95645"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.ide.visualstudio@2.0/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.ide.visualstudio.git",
     "type": "git",
-    "revision": "700b44077345e97d37d464ff25507638983aed64"
+    "revision": "0fe3b29f9aff2b90b9f0962ae35036a824d3dd6b"
   }
 }

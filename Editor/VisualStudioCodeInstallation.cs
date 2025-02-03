@@ -17,7 +17,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 {
 	internal class VisualStudioCodeInstallation : VisualStudioInstallation
 	{
-		private static readonly IGenerator _generator = new SdkStyleProjectGeneration();
+		private static readonly IGenerator _generator = GeneratorFactory.GetInstance(GeneratorStyle.SDK);
 
 		public override bool SupportsAnalyzers
 		{
@@ -31,7 +31,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		{
 			get
 			{
-				return new Version(11, 0);
+				return new Version(13, 0);
 			}
 		}
 
@@ -373,6 +373,16 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 			var content = @"{
 " + excludes + @",
+    ""files.associations"": {
+        ""*.asset"": ""yaml"",
+        ""*.meta"": ""yaml"",
+        ""*.prefab"": ""yaml"",
+        ""*.unity"": ""yaml"",
+    },
+    ""explorer.fileNesting.enabled"": true,
+    ""explorer.fileNesting.patterns"": {
+        ""*.sln"": ""*.csproj"",
+    },
     ""dotnet.defaultSolution"": """ + IOPath.GetFileName(ProjectGenerator.SolutionFile()) + @"""
 }";
 
@@ -500,17 +510,30 @@ namespace Microsoft.Unity.VisualStudio.Editor
 
 		public override bool Open(string path, int line, int column, string solution)
 		{
+			var application = Path;
+
 			line = Math.Max(1, line);
 			column = Math.Max(0, column);
 
 			var directory = IOPath.GetDirectoryName(solution);
-			var application = Path;
+			var workspace = TryFindWorkspace(directory);
 
-			ProcessRunner.Start(string.IsNullOrEmpty(path) ? 
-				ProcessStartInfoFor(application, $"\"{directory}\"") :
-				ProcessStartInfoFor(application, $"\"{directory}\" -g \"{path}\":{line}:{column}"));
+			var target = workspace ?? directory;
+
+			ProcessRunner.Start(string.IsNullOrEmpty(path)
+				? ProcessStartInfoFor(application, $"\"{target}\"")
+				: ProcessStartInfoFor(application, $"\"{target}\" -g \"{path}\":{line}:{column}"));
 
 			return true;
+		}
+
+		private static string TryFindWorkspace(string directory)
+		{
+			var files = Directory.GetFiles(directory, "*.code-workspace", SearchOption.TopDirectoryOnly);
+			if (files.Length == 0 || files.Length > 1)
+				return null;
+
+			return files[0];
 		}
 
 		private static ProcessStartInfo ProcessStartInfoFor(string application, string arguments)
