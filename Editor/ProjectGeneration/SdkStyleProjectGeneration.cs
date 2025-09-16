@@ -4,7 +4,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEditor.Compilation;
@@ -121,6 +121,28 @@ namespace Microsoft.Unity.VisualStudio.Editor
 				footerBuilder.Append($@"    <ProjectCapability {attribute}=""{capability}"" />").Append(k_WindowsNewline);
 			}
 			footerBuilder.Append(@"  </ItemGroup>").Append(k_WindowsNewline);
+		}
+
+		internal override string SolutionFileImpl()
+		{
+			return base.SolutionFileImpl() + "x";
+		}
+
+		internal override string SolutionText(IEnumerable<Assembly> assemblies, Solution previousSolution = null)
+		{
+			var projects = GetSolutionProjects(assemblies, previousSolution);
+
+			var content = new StringBuilder();
+			content.Append("<Solution>").Append(k_WindowsNewline);
+
+			foreach (var project in projects)
+			{
+				content.Append("  ").Append("<Project Path=\"").Append(project.FileName).Append("\" />").Append(k_WindowsNewline);
+			}
+
+			content.Append("</Solution>").Append(k_WindowsNewline);
+
+			return content.ToString();
 		}
 	}
 }

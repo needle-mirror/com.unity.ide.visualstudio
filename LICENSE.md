@@ -1,7 +1,7 @@
-MIT License
+Visual Studio Editor copyright © 2019 Unity Technologies
+Visual Studio Editor copyright © 2019 Microsoft Corporation. All rights reserved.
 
-Copyright (c) 2019 Unity Technologies
-Copyright (c) 2019 Microsoft Corporation. All rights reserved.
+MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

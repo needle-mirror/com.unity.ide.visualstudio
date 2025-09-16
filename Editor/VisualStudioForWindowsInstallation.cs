@@ -26,6 +26,8 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		// C# language version support for Visual Studio
 		private static readonly VersionPair[] WindowsVersionTable =
 		{
+			new VersionPair(18, 0, /* => */ 14,0),
+
 			// VisualStudio 2022
 			new VersionPair(17,12, /* => */ 13,0),
 			new VersionPair(17, 8, /* => */ 12,0),
@@ -43,8 +45,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 			new VersionPair(15,0, /* => */ 7,0),
 		};
 
-		private static string _vsWherePath = null;
-		private static readonly IGenerator _generator = GeneratorFactory.GetInstance(GeneratorStyle.Legacy);
+		private static string _vsWherePath;
 
 		public override bool SupportsAnalyzers
 		{
@@ -124,7 +125,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
 		{
 			get
 			{
-				return _generator;
+				return GeneratorFactory.GetInstance(Version.Major >= 18 ? GeneratorStyle.SDK : GeneratorStyle.Legacy);
 			}
 		}
 

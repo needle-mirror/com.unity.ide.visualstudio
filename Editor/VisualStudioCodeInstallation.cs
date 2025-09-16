@@ -382,6 +382,7 @@ namespace Microsoft.Unity.VisualStudio.Editor
     ""explorer.fileNesting.enabled"": true,
     ""explorer.fileNesting.patterns"": {
         ""*.sln"": ""*.csproj"",
+        ""*.slnx"": ""*.csproj""
     },
     ""dotnet.defaultSolution"": """ + IOPath.GetFileName(ProjectGenerator.SolutionFile()) + @"""
 }";

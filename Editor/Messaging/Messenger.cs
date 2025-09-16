@@ -14,7 +14,6 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 		public event EventHandler<ExceptionEventArgs> MessagerException;
 
 		private readonly UdpSocket _socket;
-		private readonly object _disposeLock = new object();
 		private bool _disposed;
 
 #if UNITY_EDITOR_WIN
@@ -54,13 +53,13 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 
 			try
 			{
-				lock (_disposeLock)
-				{
-					if (_disposed)
-						return;
+				beginReceive:
+				if (_disposed)
+					return;
 
-					_socket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref any, ReceiveMessageCallback, buffer);
-				}
+				var result = _socket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref any, ReceiveMessageCallback, buffer);
+				if (result.CompletedSynchronously)
+					goto beginReceive;
 			}
 			catch (SocketException se)
 			{
@@ -79,13 +78,10 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 			{
 				var endPoint = UdpSocket.Any();
 
-				lock (_disposeLock)
-				{
-					if (_disposed)
-						return;
+				if (_disposed)
+					return;
 
-					_socket.EndReceiveFrom(result, ref endPoint);
-				}
+				_socket.EndReceiveFrom(result, ref endPoint);
 
 				var message = DeserializeMessage(UdpSocket.BufferFor(result));
 				if (message != null)
@@ -117,7 +113,8 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 				RaiseMessagerException(e);
 			}
 
-			BeginReceiveMessage();
+			if (!result.CompletedSynchronously)
+				BeginReceiveMessage();
 		}
 
 		private static bool IsValidTcpMessage(Message message, out int port, out int bufferSize)
@@ -153,29 +150,29 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 
 			try
 			{
-				lock (_disposeLock)
+				if (_disposed)
+					return;
+
+				if (buffer.Length >= UdpSocket.BufferSize)
 				{
-					if (_disposed)
-						return;
-
-					if (buffer.Length >= UdpSocket.BufferSize)
+					// switch to TCP mode to handle big messages
+					var port = TcpListener.Queue(buffer);
+					if (port > 0)
 					{
-						// switch to TCP mode to handle big messages
-						var port = TcpListener.Queue(buffer);
-						if (port > 0)
-						{
-							// success, replace original message with "switch to tcp" marker + port information + buffer length
-							message = MessageFor(MessageType.Tcp, string.Concat(port, ':', buffer.Length));
-							buffer = SerializeMessage(message);
-						}
+						// success, replace original message with "switch to tcp" marker + port information + buffer length
+						message = MessageFor(MessageType.Tcp, string.Concat(port, ':', buffer.Length));
+						buffer = SerializeMessage(message);
 					}
-
-					_socket.BeginSendTo(buffer, 0, Math.Min(buffer.Length, UdpSocket.BufferSize), SocketFlags.None, target, SendMessageCallback, null);
 				}
+
+				_socket.BeginSendTo(buffer, 0, Math.Min(buffer.Length, UdpSocket.BufferSize), SocketFlags.None, target, SendMessageCallback, null);
 			}
 			catch (SocketException se)
 			{
 				MessagerException?.Invoke(this, new ExceptionEventArgs(se));
+			}
+			catch (ObjectDisposedException)
+			{
 			}
 		}
 
@@ -183,13 +180,10 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 		{
 			try
 			{
-				lock (_disposeLock)
-				{
-					if (_disposed)
-						return;
+				if (_disposed)
+					return;
 
-					_socket.EndSendTo(result);
-				}
+				_socket.EndSendTo(result);
 			}
 			catch (SocketException se)
 			{
@@ -228,10 +222,13 @@ namespace Microsoft.Unity.VisualStudio.Editor.Messaging
 
 		public void Dispose()
 		{
-			lock (_disposeLock)
+			try
 			{
 				_disposed = true;
 				_socket.Close();
+			}
+			catch
+			{
 			}
 		}
 	}
